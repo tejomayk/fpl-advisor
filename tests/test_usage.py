@@ -120,14 +120,14 @@ def test_caps_from_env(monkeypatch):
     monkeypatch.setenv("YOUTUBE_DAILY_UNITS", "nonsense")
     assert usage.caps_for("odds") == usage.Caps(daily=12, monthly=123, floor=50)
     o = usage.caps_for("openrouter")
-    assert o.daily == 0.05 and o.monthly == 1.0 and o.calls_per_day == 7
+    assert o.daily == 0.05 and o.monthly == 5.0 and o.calls_per_day == 7
     assert usage.caps_for("youtube").daily == usage.DEFAULT_YOUTUBE_DAILY_UNITS
 
 
 def test_conservative_defaults():
     assert usage.caps_for("odds", env={}) == usage.Caps(daily=40, monthly=400, floor=50)
     o = usage.caps_for("openrouter", env={})
-    assert (o.daily, o.monthly, o.calls_per_day) == (0.20, 1.00, 100)
+    assert (o.daily, o.monthly, o.calls_per_day) == (0.30, 5.00, 100)
     assert usage.caps_for("youtube", env={}).daily == 2000
 
 
@@ -380,8 +380,10 @@ def test_openrouter_failure_counts_worst_case_unless_refused(monkeypatch):
         raise TimeoutError
 
     news._chat("k" * 20, news.DEFAULT_MODEL, "hi", timeout)
-    worst = usage.openrouter_worst_case(
-        news.DEFAULT_MODEL, news.SYSTEM_PROMPT + "hi", 2500
+    worst = (
+        usage.openrouter_worst_case(  # reasoning models get extra room, reserved too
+            news.DEFAULT_MODEL, news.SYSTEM_PROMPT + "hi", 2500 + news.REASONING_TOKENS
+        )
     )
     s = usage.default().snapshot()["openrouter"]
     assert s["spent_day"] == pytest.approx(2 * worst) and s["calls_day"] == 2

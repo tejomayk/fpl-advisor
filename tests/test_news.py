@@ -600,3 +600,41 @@ def test_dotenv_loader_does_not_override_env(tmp_path, monkeypatch):
     assert os.environ["OPENROUTER_MODEL"] == "from/file"
     assert os.environ["OPENROUTER_API_KEY"] == "from-env"
     assert "OTHER_SECRET" not in os.environ
+
+
+def test_first_json_takes_the_first_object_of_a_reply():
+    assert news.first_json('{"players": []}') == {"players": []}
+    assert news.first_json('```json\n{"a": 1}\n```') == {"a": 1}
+    # Seen in the model bake-off: a second "corrected" object after the first, even in JSON mode.
+    reply = '{"a": 1}\nCorrection, output must be exactly the keys:\n{"a": 2}'
+    assert news.first_json(reply) == {"a": 1}
+    with pytest.raises(ValueError):
+        news.first_json("no json here")
+
+
+def test_reasoning_model_request(monkeypatch):
+    sent = []
+
+    def post(url, payload, headers):
+        sent.append(payload)
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {"cost": 0.001}}
+
+    assert news._chat("k" * 20, "openai/gpt-6.1-terra", "hi", post) == "{}"
+    p = sent[0]
+    assert p["reasoning"] == {"effort": "low", "exclude": True}
+    assert "temperature" not in p
+    assert p["max_tokens"] == 2500 + news.REASONING_TOKENS
+    assert p["provider"] == {"require_parameters": True, "data_collection": "deny"}
+    assert p["response_format"] == {"type": "json_object"}
+
+
+def test_plain_model_request_keeps_temperature(monkeypatch):
+    sent = []
+
+    def post(url, payload, headers):
+        sent.append(payload)
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {"cost": 0.0}}
+
+    news._chat("k" * 20, "google/gemini-2.5-flash-lite", "hi", post)
+    assert sent[0]["temperature"] == 0 and "reasoning" not in sent[0]
+    assert sent[0]["max_tokens"] == 2500

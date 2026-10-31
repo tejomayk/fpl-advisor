@@ -583,12 +583,8 @@ def parse_reply(world: World, content: str, text: str) -> dict | None:
     """Validate a model reply into player ids. None if it is not the schema we asked for.
 
     `text` is the video text we sent: a player must be named in it to be kept."""
-    s = (content or "").strip()
-    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", s, re.DOTALL)
-    if fence:
-        s = fence.group(1)
     try:
-        data = json.loads(s)
+        data = news.first_json(content)
     except ValueError:
         log.warning("creators: LLM reply was not JSON; dropped")
         return None

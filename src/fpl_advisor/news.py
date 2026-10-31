@@ -63,9 +63,15 @@ from .world import World
 log = logging.getLogger(__name__)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Cheap, fast, non-reasoning, reliable with JSON mode ($0.10 in / $0.40 out per 1M tokens on
-# OpenRouter, checked 2026-10-31). Override with OPENROUTER_MODEL.
-DEFAULT_MODEL = "google/gemini-2.5-flash-lite"
+# Chosen by a bake-off on 59 real news items and creator videos (2026-11-01): top three on
+# accuracy, never broke JSON, about $1-3 a month here ($1 in / $5 out per 1M tokens on
+# OpenRouter). Override with OPENROUTER_MODEL.
+DEFAULT_MODEL = "openai/gpt-6.1-terra"
+# Models that think before answering: the effort to ask for. Their thinking is billed as output,
+# so each call gets REASONING_TOKENS more room (and a matching worst-case reservation), and the
+# thinking itself is left out of the reply.
+REASONING_EFFORT = {"openai/gpt-6.1-terra": "low"}
+REASONING_TOKENS = 4000
 
 BBC_LEAGUE_FEED = "https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml"
 BBC_CLUB_FEED = "https://feeds.bbci.co.uk/sport/football/teams/{slug}/rss.xml"
@@ -568,7 +574,14 @@ def _chat(
         "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
         "usage": {"include": True},  # the reply then carries its real cost
+        # Only providers that honour every setting above, and none that keep or train on prompts.
+        "provider": {"require_parameters": True, "data_collection": "deny"},
     }
+    if model in REASONING_EFFORT:  # reasoning models take no temperature
+        del payload["temperature"]
+        max_tokens += REASONING_TOKENS
+        payload["max_tokens"] = max_tokens
+        payload["reasoning"] = {"effort": REASONING_EFFORT[model], "exclude": True}
     headers = {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
@@ -617,16 +630,28 @@ def _chat(
     return None
 
 
+def first_json(content: str):
+    """The first JSON value in a model reply. Raises ValueError if there is none.
+
+    Some models add a code fence, or write a second "corrected" object after the first even in
+    JSON mode; the first complete object is the answer we asked for."""
+    text = (content or "").strip()
+    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1)
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("no JSON object")
+    data, _ = json.JSONDecoder().raw_decode(text, start)
+    return data
+
+
 def parse_reply(
     world: World, content: str, clubs: list[int], items: list[Item]
 ) -> tuple[dict[int, PlayerSignal], int]:
     """Validate a model reply. Returns (signals by player id, count of unmapped names)."""
-    text = content.strip()
-    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
-    if fence:
-        text = fence.group(1)
     try:
-        data = json.loads(text)
+        data = first_json(content)
     except ValueError:
         log.warning("news: LLM reply was not JSON; dropped")
         return {}, 0

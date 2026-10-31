@@ -53,8 +53,8 @@ log = logging.getLogger(__name__)
 DEFAULT_ODDS_MONTHLY = 400  # credits; the free plan has 500 a month
 DEFAULT_ODDS_DAILY = 40  # credits; a normal day uses ~10, a props-window day ~25
 ODDS_FLOOR = 50  # stop when The Odds API says fewer credits than this are left
-DEFAULT_OPENROUTER_MONTHLY_USD = 1.00
-DEFAULT_OPENROUTER_DAILY_USD = 0.20
+DEFAULT_OPENROUTER_MONTHLY_USD = 5.00
+DEFAULT_OPENROUTER_DAILY_USD = 0.30
 DEFAULT_OPENROUTER_MAX_CALLS_PER_DAY = 100  # a normal day makes ~20
 DEFAULT_YOUTUBE_DAILY_UNITS = 2000  # Google's free quota is 10,000 a day
 
@@ -143,6 +143,7 @@ def caps_for(provider: str, env: Mapping[str, str] | None = None) -> Caps:
 # plain model, set OPENROUTER_MODEL_PRICE="<in>,<out>" (US$ per million tokens, from the
 # model's OpenRouter page); that declares it and its price for the reservation.
 OPENROUTER_PRICES = {
+    "openai/gpt-6.1-terra": (1.00, 5.00),  # the default; checked 2026-11-01
     "google/gemini-2.5-flash-lite": (0.10, 0.40),  # checked 2026-10-31
     "openai/gpt-4o-mini": (0.15, 0.60),
 }
