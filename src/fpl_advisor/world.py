@@ -6,7 +6,8 @@ gameweek `gw` onward, so a backtest only sees what was known before that deadlin
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+import json
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime
 
 from .api import FPLClient
@@ -99,6 +100,70 @@ class World:
 
     def finished_fixtures(self) -> list[Fixture]:
         return [f for f in self.fixtures if f.finished]
+
+    # ------------------------------------------------------------ snapshot
+    # The refresh job saves the world it loaded, so a web function can start from it instead of
+    # fetching ~700 FPL endpoints on a cold start. JSON keys are strings; ids come back as ints.
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), separators=(",", ":"))
+
+    @classmethod
+    def from_json(cls, text: str | bytes) -> World:
+        """Inverse of `to_json`. Raises ValueError on anything that isn't a valid snapshot."""
+        return cls.from_dict(json.loads(text))
+
+    def to_dict(self) -> dict:
+        return {
+            "version": SNAPSHOT_VERSION,
+            "players": [asdict(p) for p in self.players.values()],
+            "teams": [asdict(t) for t in self.teams.values()],
+            "fixtures": [asdict(f) for f in self.fixtures],
+            "events": [
+                {**asdict(e), "deadline": e.deadline.isoformat()} for e in self.events
+            ],
+            "history": {str(k): v for k, v in self.history.items()},
+            "past": {str(k): v for k, v in self.past.items()},
+            "chips": self.chips,
+            "total_managers": self.total_managers,
+            "cutoff": self.cutoff,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> World:
+        try:
+            if d.get("version") != SNAPSHOT_VERSION:
+                raise ValueError(f"unknown world snapshot version {d.get('version')!r}")
+            return cls(
+                players={p["id"]: Player(**_known(Player, p)) for p in d["players"]},
+                teams={t["id"]: Team(**_known(Team, t)) for t in d["teams"]},
+                fixtures=[Fixture(**_known(Fixture, f)) for f in d["fixtures"]],
+                events=[
+                    Event(
+                        **{
+                            **_known(Event, e),
+                            "deadline": datetime.fromisoformat(e["deadline"]),
+                        }
+                    )
+                    for e in d["events"]
+                ],
+                history={int(k): v for k, v in d["history"].items()},
+                past={int(k): v for k, v in d["past"].items()},
+                chips=d["chips"],
+                total_managers=d.get("total_managers", 0),
+                cutoff=d.get("cutoff"),
+            )
+        except (KeyError, TypeError, AttributeError) as e:
+            raise ValueError(f"not a valid world snapshot: {e}") from e
+
+
+SNAPSHOT_VERSION = 1
+
+
+def _known(cls, d: dict) -> dict:
+    """Only the fields `cls` has, so a snapshot from a newer version still loads."""
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in d.items() if k in names}
 
 
 def _f(x) -> float:

@@ -35,6 +35,7 @@ SECRET_ENV_VARS = (
     "OPENROUTER_API_KEY",
     "YOUTUBE_API_KEY",
     "NTFY_TOKEN",
+    "BLOB_READ_WRITE_TOKEN",
 )
 
 # Everything the repo-root `.env` may set. Other lines are ignored.
@@ -79,6 +80,7 @@ _PATTERNS = (
     ),
     (re.compile(r"sk-or-[A-Za-z0-9_-]{8,}"), MASK),
     (re.compile(r"AIza[0-9A-Za-z_-]{35}"), MASK),
+    (re.compile(r"vercel_blob_rw_[A-Za-z0-9]+_[A-Za-z0-9]{8,}"), MASK),
 )
 
 

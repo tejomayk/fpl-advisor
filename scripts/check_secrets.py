@@ -41,6 +41,7 @@ SECRET_ENV_VARS = (
     "OPENROUTER_API_KEY",
     "YOUTUBE_API_KEY",
     "NTFY_TOKEN",
+    "BLOB_READ_WRITE_TOKEN",
 )
 # Not an API key, but it works like a password and must never be committed either.
 ALSO_PRIVATE = ("NTFY_TOPIC",)
@@ -51,6 +52,10 @@ ALLOW = "check-secrets: allow"
 SHAPES = (
     ("an OpenRouter key", re.compile(r"sk-or-v1-[A-Za-z0-9]{20,}")),
     ("a Google API key", re.compile(r"AIza[0-9A-Za-z_-]{35}")),
+    (
+        "a Vercel Blob token",
+        re.compile(r"vercel_blob_rw_[A-Za-z0-9]+_[A-Za-z0-9]{16,}"),
+    ),
 )
 HEX32 = re.compile(r"(?<![0-9A-Fa-f])[0-9a-fA-F]{32}(?![0-9A-Fa-f])")
 # Odds event ids are 32 hex too, so a plain "odds" nearby is not enough.
