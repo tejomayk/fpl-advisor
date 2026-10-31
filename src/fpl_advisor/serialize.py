@@ -181,6 +181,7 @@ def _captain(a: Advice) -> dict:
 
 
 def _lineup(a: Advice) -> dict:
+    """The team sheet after our moves, plus `current`: the team exactly as the manager left it."""
     g = a.event.id
     return {
         "xi": [_player(a, p) for p in a.plan.xi[g]],
@@ -189,6 +190,36 @@ def _lineup(a: Advice) -> dict:
         "vice_id": a.plan.vice[g],
         "expected_points": round(a.plan.gw_points[g], 1),
         "bench_boost": bool(a.chip_now and a.chip_now.chip == "bboost"),
+        "current": _current_lineup(a),
+    }
+
+
+def _current_lineup(a: Advice) -> dict | None:
+    """The XI, bench and captain saved in FPL last gameweek, scored for this one.
+
+    FPL keeps that line-up unless the manager changes it, so it's what scores if they do nothing.
+    Changes made since the last deadline can't be seen (FPL hides them until the next one).
+    """
+    sq = a.squad
+    if a.initial or len(sq.starting) != 11:
+        return None
+    g = a.event.id
+    xi = list(sq.starting)
+    bench = [p for p in sq.players if p not in xi]
+    cap = sq.captain if sq.captain in xi else None
+    vice = sq.vice if sq.vice in xi else None
+    points = sum(a.xp[p].get(g, 0.0) for p in xi)
+    if (
+        cap is not None
+    ):  # the armband doubles one score; the vice only counts if they miss out
+        points += a.xp[cap].get(g, 0.0)
+    return {
+        "xi": [_player(a, p) for p in xi],
+        "bench": [_player(a, p) for p in bench],
+        "captain_id": cap,
+        "vice_id": vice,
+        "expected_points": round(points, 1),
+        "bench_boost": False,
     }
 
 

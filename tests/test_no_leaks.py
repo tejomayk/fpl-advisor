@@ -203,7 +203,7 @@ def site(fake_keys, monkeypatch, tmp_path):
     monkeypatch.setenv("DISABLE_ALERT_SCHEDULER", "1")
     wire = PaidWire()
     monkeypatch.setattr(urllib.request, "urlopen", wire)
-    app = web.create_app(client=FakeFPL(), start_background=False)
+    app = web.create_app(client=FakeFPL(), start_background=False, alerts=True)
     hub = app.state.signals
     hub.refresh(W, now=NOW, discover=False)  # what the scheduled loop would do
     worlds = app.state.worlds

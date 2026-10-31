@@ -154,3 +154,11 @@ def test_prune_cache(tmp_path):
     os.utime(old, (time.time() - 10_000, time.time() - 10_000))
     assert prune_cache(tmp_path, max_age_seconds=3600) == 1
     assert not old.exists() and new.exists()
+
+
+def test_alert_routes_are_off_unless_enabled(make_client, monkeypatch):
+    c = make_client(FailingClient("x"))
+    assert c.post("/api/alerts/status", json={}).status_code == 404
+    monkeypatch.setenv("FPL_ALERTS", "1")
+    c = make_client(FailingClient("x"))
+    assert c.post("/api/alerts/status", json={}).status_code != 404

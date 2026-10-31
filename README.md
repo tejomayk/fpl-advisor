@@ -1,6 +1,6 @@
 # fpl-advisor
 
-An open-source Fantasy Premier League (FPL) advisor. It is a one-page website that tells you what to do each gameweek and explains why in plain words. It can also remind you on your phone before each deadline.
+An open-source Fantasy Premier League (FPL) advisor. It is a one-page website that tells you what to do each gameweek and explains why in plain words.
 
 ## Use it
 
@@ -11,6 +11,8 @@ The public URL will be added at launch. Until then, you can [run your own copy](
 1. Paste your FPL team link (or just the team ID).
 2. Optional: paste your mini-league link. This adds standings, a points target and what your rivals own.
 3. Read your advice: transfers, captain and vice-captain, starting XI and bench order, and whether to play a chip. Every suggestion has a plain reason.
+
+The team sheet has two views. **Your team now** is the XI, bench and captain you last saved in FPL, with its expected points: what scores if you change nothing. **After our moves** is the team with the suggested transfers, captain and chips. You decide which to play.
 
 No login and no password. It reads FPL's public data only.
 
@@ -29,36 +31,12 @@ https://fantasy.premierleague.com/entry/1234567/event/9
 
 The numbers in this README are made up. Use your own.
 
-## Phone reminders
+## Phone reminders (off for now)
 
-Reminders are free. They use the ntfy app. You need no account and no email.
-
-1. Get your advice on the page first. Alerts are set up for the team you load.
-2. Install the free ntfy app on your phone (iPhone or Android).
-3. Tap **Create my alerts** in the Alerts box on the page.
-4. Tap **Open in ntfy** to subscribe. You can also copy the topic name into the app.
-
-A welcome message arrives right away.
-
-**What you get**
-
-- Deadline reminders 24 hours and 2 hours before each gameweek.
-- A nudge when a transfer you plan is about to change price.
-- Team news on your players.
-- A warning when a chip is about to expire.
-
-You only get a message when something is due, so quiet days are normal.
-
-**How to stop.** Tap **Stop alerts** on the page, then confirm. This works in the browser where you created the alerts. You can also remove the topic in the ntfy app.
-
-**Privacy.** The server stores only:
-
-- your team ID,
-- your league ID, if you gave one,
-- a random topic name,
-- a hashed manage token (the token itself is kept only in your browser).
-
-It also keeps which alerts it has already sent, so you never get the same one twice. FPL data is public. There is no login. Keep your topic name private: anyone who has it can read your alerts.
+Phone reminders through the free ntfy app are built but switched off on the website while the
+advice itself is finished: everything happens on the page for now. Self-hosters can turn them back
+on with `FPL_ALERTS=1`. The setup, what you get and what the server stores are described in
+[docs/alerts.md](docs/alerts.md).
 
 ## How it works
 
@@ -148,6 +126,7 @@ Open http://localhost:8000. Add `/?demo=1` to see sample data without calling FP
 | `ALERT_RUN_MINUTE` | `7` | Minute past each hour when the alert check runs |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Set to `*` behind a hosting proxy (Fly, Render, Railway) so rate limits see real visitor IPs |
 | `NTFY_TOKEN` | unset | Access token for ntfy (needed beyond ntfy.sh free-tier limits) |
+| `FPL_ALERTS` | unset (off) | Set to `1` to turn on phone-alert sign-up and the alert scheduler on the website |
 | `DISABLE_ALERT_SCHEDULER` | unset | Set to any value to turn the scheduler off. Sign-up still works |
 | `ODDS_API_KEY` | unset | The Odds API key. Turns on bookmaker odds |
 | `ODDS_MONTHLY_BUDGET` | `400` | Most Odds API credits to spend in a calendar month (calls also stop when the account has under 50 left) |

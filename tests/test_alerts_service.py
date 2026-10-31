@@ -33,7 +33,7 @@ def app(tmp_path, monkeypatch, sent):
     monkeypatch.setenv("FPL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("DISABLE_ALERT_SCHEDULER", "1")
     monkeypatch.delenv("PUBLIC_URL", raising=False)
-    return web.create_app(client=FakeClient(), start_background=False)
+    return web.create_app(client=FakeClient(), start_background=False, alerts=True)
 
 
 @pytest.fixture

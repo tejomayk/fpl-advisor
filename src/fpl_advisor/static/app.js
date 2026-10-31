@@ -25,7 +25,6 @@ const store = {
 };
 const K_TEAM = "fpl-advisor.team";
 const K_LEAGUE = "fpl-advisor.league";
-const K_ALERTS = "fpl-advisor.alerts";
 
 /* ---------------- Formatting ---------------- */
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -252,7 +251,6 @@ function showResults(data, demo) {
   resultsEl.hidden = false;
   document.body.classList.add("has-results");
   startCountdown();
-  renderAlerts();
   const title = $("#results-title");
   if (title) {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -491,15 +489,18 @@ const kitStyle = (team) => {
   return k ? `--kit:${k[0]};--kit-ink:${k[1]}` : "";
 };
 
-function pitchChip(p, { capId, viceId, order } = {}) {
+function pitchChip(p, { capId, viceId, order, fresh } = {}) {
   const a = availability(p);
   const cv = p.id === capId ? "C" : p.id === viceId ? "V" : null;
+  const isNew = fresh && fresh.has(p.id);
   const label = [p.name, p.team, p.next_fixture ? `v ${p.next_fixture}` : null, `${f1(p.xp_next)} expected points`,
-    cv === "C" ? "captain" : cv === "V" ? "vice-captain" : null, a ? `Team news: ${a.text}` : null].filter(Boolean).join(", ");
-  return html`<li class="pl" title="${a ? a.text : ""}">
+    cv === "C" ? "captain" : cv === "V" ? "vice-captain" : null, isNew ? "suggested signing" : null,
+    a ? `Team news: ${a.text}` : null].filter(Boolean).join(", ");
+  return html`<li class="pl ${isNew ? "is-new" : ""}" title="${a ? a.text : ""}">
     <span class="sr-only">${order ? `Bench ${order}: ` : ""}${label}</span>
     ${cv ? html`<span class="cv ${cv === "V" ? "v" : ""}" aria-hidden="true">${cv}</span>` : ""}
     ${a ? html`<span class="flag ${a.kind}" aria-hidden="true"></span>` : ""}
+    ${isNew ? html`<span class="newtag" aria-hidden="true">In</span>` : ""}
     <span class="kit" style="${kitStyle(p.team)}" aria-hidden="true">${p.team || "–"}</span>
     <span class="nm" aria-hidden="true">${p.name}</span>
     <span class="fx" aria-hidden="true">${p.next_fixture || "–"}</span>
@@ -508,31 +509,82 @@ function pitchChip(p, { capId, viceId, order } = {}) {
   </li>`;
 }
 
-function lineup(d) {
-  const L = d.lineup;
-  if (!L || !Array.isArray(L.xi) || !L.xi.length) return "";
-  const opts = { capId: L.captain_id, viceId: L.vice_id };
+// Only web links reach an href: anything else (javascript:, data:, junk) becomes null.
+function safeUrl(u) {
+  try {
+    const x = new URL(String(u), location.href);
+    return ["https:", "http:"].includes(x.protocol) ? x.href : null;
+  } catch { return null; }
+}
+
+// One team sheet: the pitch, the bench and any team news for it.
+function sheet(L, { fresh, benchBoost } = {}) {
+  const opts = { capId: L.captain_id, viceId: L.vice_id, fresh };
   const bench = Array.isArray(L.bench) ? L.bench : [];
   const flagged = [...L.xi, ...bench].filter((p) => availability(p));
-  return html`<section class="sec" aria-labelledby="xi-h">
-    ${secHead("xi-h", "Team sheet", "Your starting XI",
-      isNum(L.expected_points) ? html`<p class="aside xp-total">Expected points this week <b>${f1(L.expected_points)}</b></p>` : "")}
-    <div class="pitch">
+  return html`<div class="pitch">
       ${POS.map((pos) => {
         const row = L.xi.filter((p) => p.pos === pos);
         return row.length ? html`<ul class="prow" aria-label="${POS_LABEL[pos]}">${row.map((p) => pitchChip(p, opts))}</ul>` : "";
       })}
     </div>
     ${bench.length ? html`<div class="bench">
-      <h3 class="sub">${L.bench_boost ? "Bench (Bench Boost on: these score too)" : "Bench, in order"}</h3>
+      <h3 class="sub">${benchBoost ? "Bench (Bench Boost on: these score too)" : "Bench, in order"}</h3>
       <ul class="prow" aria-label="Bench in order">${bench.map((p, i) => pitchChip(p, { ...opts, order: i + 1 }))}</ul>
     </div>` : ""}
     ${flagged.length ? html`<ul class="news-list" aria-label="Team news">${flagged.map((p) => {
       const a = availability(p);
       return html`<li><span class="dot ${a.kind}" aria-hidden="true"></span><span><strong>${p.name}</strong>: ${a.text}</span></li>`;
-    })}</ul>` : ""}
+    })}</ul>` : ""}`;
+}
+
+// Two views of the team sheet: as the manager left it (the default, since nobody has to take our
+// advice) and after the suggested moves, with the expected points of each.
+function lineup(d) {
+  const L = d.lineup;
+  if (!L || !Array.isArray(L.xi) || !L.xi.length) return "";
+  const C = L.current && Array.isArray(L.current.xi) && L.current.xi.length ? L.current : null;
+  const after = sheet(L, {
+    fresh: C ? new Set(L.xi.concat(L.bench || []).map((p) => p.id).filter((id) => !C.xi.concat(C.bench || []).some((q) => q.id === id))) : null,
+    benchBoost: L.bench_boost,
+  });
+  if (!C) {
+    return html`<section class="sec" aria-labelledby="xi-h">
+      ${secHead("xi-h", "Team sheet", "Your starting XI",
+        isNum(L.expected_points) ? html`<p class="aside xp-total">Expected points this week <b>${f1(L.expected_points)}</b></p>` : "")}
+      ${after}
+    </section>`;
+  }
+  const gain = isNum(L.expected_points) && isNum(C.expected_points) ? L.expected_points - C.expected_points : null;
+  const view = state.sheet === "after" ? "after" : "now";
+  const tab = (key, label, pts) => html`<button type="button" class="seg-btn" data-sheet="${key}" aria-pressed="${view === key}">
+      <span class="seg-label">${label}</span>
+      <span class="seg-pts">${isNum(pts) ? f1(pts) : "–"} <small>pts</small></span>
+    </button>`;
+  return html`<section class="sec" aria-labelledby="xi-h">
+    ${secHead("xi-h", "Team sheet", "Your starting XI",
+      gain !== null && gain > 0.05 ? html`<p class="aside xp-total">Our moves add <b>+${f1(gain)}</b> expected points this week</p>` : "")}
+    <div class="seg" role="group" aria-label="Which team sheet to show">
+      ${tab("now", "Your team now", C.expected_points)}
+      ${tab("after", "After our moves", L.expected_points)}
+    </div>
+    <p class="hint sheet-note" data-sheet-note="now" ${view === "now" ? "" : "hidden"}>The XI, bench and captain you last saved in FPL. It's what scores if you change nothing.</p>
+    <p class="hint sheet-note" data-sheet-note="after" ${view === "after" ? "" : "hidden"}>Your team with the transfers, captain and chips suggested above. Players marked <span class="newtag inline">In</span> are the suggested signings.</p>
+    <div data-sheet-view="now" ${view === "now" ? "" : "hidden"}>${sheet(C)}</div>
+    <div data-sheet-view="after" ${view === "after" ? "" : "hidden"}>${after}</div>
   </section>`;
 }
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.("[data-sheet]");
+  if (!btn) return;
+  const sec = btn.closest("section");
+  state.sheet = btn.dataset.sheet;
+  sec.querySelectorAll("[data-sheet]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+  sec.querySelectorAll("[data-sheet-view],[data-sheet-note]").forEach((el) => {
+    el.hidden = (el.dataset.sheetView || el.dataset.sheetNote) !== state.sheet;
+  });
+});
 
 function chips(d) {
   const list = Array.isArray(d.chips) ? d.chips : [];
@@ -785,200 +837,9 @@ function notes(d) {
   </section>`;
 }
 
-/* ---------------- Alerts ---------------- */
-const alertsEl = $("#alerts-action");
-const alerts = { saved: readSaved(), busy: false, msg: null, msgKind: null, disabled: false, fresh: false, confirmStop: false };
-
-function readSaved() {
-  try {
-    const v = JSON.parse(store.get(K_ALERTS) || "null");
-    return v && typeof v.topic === "string" && typeof v.token === "string" ? v : null;
-  } catch { return null; }
-}
-function writeSaved(v) {
-  if (v) store.set(K_ALERTS, JSON.stringify(v)); else store.del(K_ALERTS);
-  alerts.saved = v;
-}
-function safeUrl(u) {
-  try {
-    const x = new URL(String(u), location.href);
-    return ["https:", "http:", "ntfy:"].includes(x.protocol) ? x.href : null;
-  } catch { return null; }
-}
-function hoursText(h) {
-  if (!Array.isArray(h) || !h.length) return "24 hours and 2 hours";
-  const parts = h.filter(isNum).map((n) => `${n} hour${n === 1 ? "" : "s"}`);
-  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
-}
-// A missing route gives FastAPI's {"detail": "Not Found"}; the alerts API itself answers {"error": ...}.
-const routeMissing = (status, body) => status === 405 || (status === 404 && !(body && "error" in body));
-
-function renderAlerts() {
-  const a = alerts;
-  $("#alert-hours").textContent = hoursText(a.saved?.reminder_hours);
-  const msg = a.msg ? html`<p class="${a.msgKind === "error" ? "err" : a.msgKind === "ok" ? "ok" : "hint"}" role="${a.msgKind === "error" ? "alert" : "status"}">${a.msg}</p>` : "";
-
-  if (a.disabled) {
-    setHTML(alertsEl, html`<p class="hint">Alerts aren't enabled on this server. You can still set them up yourself with the open-source version (see the project README).</p>`);
-    return;
-  }
-  if (a.saved) {
-    const s = a.saved;
-    const sub = safeUrl(s.subscribe_url);
-    setHTML(alertsEl, html`
-      ${a.fresh ? html`<p class="ok">Done. Now open ntfy to subscribe. A welcome message is waiting for you there.</p>` : ""}
-      <div class="alerts-on">
-        <span class="on">Alerts on for ${s.teamName ? html`${s.teamName} (team ${s.team})` : html`team ${s.team}`}</span>
-        ${a.confirmStop
-          ? html`<span class="row"><span class="hint">Stop all alerts?</span>
-              <button type="button" class="btn btn-sm btn-danger" data-act="stop-yes" ${a.busy ? "disabled" : ""}>Yes, stop alerts</button>
-              <button type="button" class="btn btn-sm btn-quiet" data-act="stop-no">Cancel</button></span>`
-          : html`<button type="button" class="btn btn-sm btn-quiet" data-act="stop">Stop alerts</button>`}
-      </div>
-      <div class="row">
-        ${sub ? html`<a class="btn ${a.fresh ? "btn-primary" : ""}" href="${sub}" target="_blank" rel="noopener noreferrer">Open in ntfy</a>` : ""}
-      </div>
-      <div>
-        <div class="topic">
-          <input id="topic-name" type="text" readonly value="${s.topic}" aria-label="Your ntfy topic name">
-          <button type="button" class="btn btn-sm" data-act="copy">Copy topic</button>
-        </div>
-        <p class="hint" style="margin-top:6px">Keep this name private. Anyone who has it can read your alerts.</p>
-      </div>
-      ${msg}`);
-    return;
-  }
-  const canCreate = !state.demo && isNum(state.team) && state.data;
-  setHTML(alertsEl, html`
-    <div class="row"><button type="button" class="btn btn-spot" data-act="create" ${canCreate && !a.busy ? "" : "disabled"}>
-      ${a.busy ? "Creating…" : "Create my alerts"}</button></div>
-    ${canCreate
-      ? html`<p class="hint">For ${state.data.team?.name || `team ${state.team}`}${state.league ? " and your mini-league" : ""}.</p>`
-      : state.demo
-        ? html`<p class="hint">You're looking at sample data. Load your own team above, then create your alerts.</p>`
-        : html`<p class="hint">Get your advice above first. Alerts are set up for the team you load.</p>`}
-    ${msg}`);
-}
-
-async function createAlerts() {
-  if (alerts.busy || !isNum(state.team)) return;
-  alerts.busy = true; alerts.msg = null; renderAlerts();
-  let res, body;
-  try {
-    res = await fetch("/api/alerts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ team: state.team, league: state.league ?? null }),
-    });
-    body = await res.json().catch(() => null);
-  } catch {
-    alerts.busy = false;
-    alerts.msg = "We couldn't reach the server. Check your connection and try again."; alerts.msgKind = "error";
-    renderAlerts();
-    return;
-  }
-  alerts.busy = false;
-  if (routeMissing(res.status, body)) { alerts.disabled = true; renderAlerts(); return; }
-  if (!res.ok || !body || typeof body.topic !== "string" || typeof body.manage_token !== "string") {
-    alerts.msg = errorMessage(res.status === 429 && body?.error ? 400 : res.status, body);
-    alerts.msgKind = "error";
-    renderAlerts();
-    return;
-  }
-  writeSaved({
-    topic: body.topic, token: body.manage_token, subscribe_url: body.subscribe_url,
-    reminder_hours: body.reminder_hours, team: state.team, league: state.league ?? null,
-    teamName: state.data?.team?.name || null,
-  });
-  alerts.fresh = true;
-  renderAlerts();
-}
-
-async function stopAlerts() {
-  const s = alerts.saved;
-  if (!s || alerts.busy) return;
-  alerts.busy = true; renderAlerts();
-  let res, body;
-  try {
-    res = await fetch("/api/alerts", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ topic: s.topic, manage_token: s.token }),
-    });
-    body = res.status === 204 ? null : await res.json().catch(() => null);
-  } catch {
-    alerts.busy = false; alerts.confirmStop = false;
-    alerts.msg = "We couldn't reach the server, so your alerts are still on. Try again in a moment."; alerts.msgKind = "error";
-    renderAlerts();
-    return;
-  }
-  alerts.busy = false; alerts.confirmStop = false; alerts.fresh = false;
-  if (res.ok || res.status === 404) {
-    writeSaved(null);
-    alerts.msg = "Alerts stopped. You can also remove the topic from the ntfy app.";
-    alerts.msgKind = "ok";
-  } else {
-    alerts.msg = errorMessage(res.status, body); alerts.msgKind = "error";
-  }
-  renderAlerts();
-}
-
-async function verifyAlerts() {
-  const s = alerts.saved;
-  if (!s) return;
-  try {
-    const res = await fetch("/api/alerts/status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ topic: s.topic, manage_token: s.token }),
-    });
-    const body = await res.json().catch(() => null);
-    if (res.ok && body && body.active === false) {
-      writeSaved(null);
-      alerts.msg = body.inactive_reason === "season_ended"
-        ? "The season has ended, so your alerts were switched off. Set them up again next season."
-        : "Your alerts are switched off. You can create them again any time.";
-      alerts.msgKind = "info";
-    } else if (res.ok && body) {
-      writeSaved({ ...s, team: isNum(body.team) ? body.team : s.team, league: body.league ?? null,
-        reminder_hours: Array.isArray(body.reminder_hours) ? body.reminder_hours : s.reminder_hours });
-    } else if (routeMissing(res.status, body)) {
-      alerts.disabled = true;
-    } else if (res.status === 404) {
-      writeSaved(null);
-      alerts.msg = "Your earlier alerts are no longer active. Create them again any time.";
-      alerts.msgKind = "info";
-    }
-  } catch { /* offline: keep showing what we saved */ }
-  renderAlerts();
-}
-
-$("#alerts").addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-act]");
-  if (!btn) return;
-  const act = btn.getAttribute("data-act");
-  if (act === "create") createAlerts();
-  else if (act === "stop") { alerts.confirmStop = true; alerts.msg = null; renderAlerts(); $('[data-act="stop-no"]')?.focus(); }
-  else if (act === "stop-no") { alerts.confirmStop = false; renderAlerts(); }
-  else if (act === "stop-yes") stopAlerts();
-  else if (act === "copy") {
-    const input = $("#topic-name");
-    try {
-      await navigator.clipboard.writeText(alerts.saved?.topic || "");
-      btn.textContent = "Copied";
-    } catch {
-      input?.focus(); input?.select();
-      btn.textContent = "Selected: copy it";
-    }
-    setTimeout(() => { if (btn.isConnected) btn.textContent = "Copy topic"; }, 2500);
-  }
-});
-
 /* ---------------- Boot ---------------- */
 function boot() {
   const params = new URLSearchParams(location.search);
-  renderAlerts();
-  verifyAlerts();
   if (params.get("demo") === "1") {
     loadDemo();
     return;

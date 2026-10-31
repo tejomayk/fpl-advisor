@@ -44,6 +44,7 @@ DOTENV_VARS = frozenset(
         "OPENROUTER_MODEL",
         "OPENROUTER_MODEL_PRICE",
         "FPL_DATA_DIR",
+        "FPL_ALERTS",
         "FPL_USAGE_PATH",
         "FPL_USAGE_MIRROR",
         "FPL_NEWS_FEEDS",

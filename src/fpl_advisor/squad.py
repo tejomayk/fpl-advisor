@@ -34,6 +34,7 @@ class Squad:
     chips_used: list[tuple[str, int]] = field(default_factory=list)
     total_points: int = 0
     based_on_event: int = 0
+    vice: int | None = None
 
     @property
     def value(self) -> float:
@@ -155,6 +156,9 @@ def load_squad(client: FPLClient, world: World, team_id: int) -> Squad:
         players=ids,
         starting=[p["element"] for p in picks["picks"] if p["position"] <= 11],
         captain=next((p["element"] for p in picks["picks"] if p["is_captain"]), None),
+        vice=next(
+            (p["element"] for p in picks["picks"] if p.get("is_vice_captain")), None
+        ),
         sell_price=sell,
         purchase_price=purchase,
         bank=rows[-1]["bank"] / 10,

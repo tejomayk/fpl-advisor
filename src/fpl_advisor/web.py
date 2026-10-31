@@ -1,7 +1,7 @@
 """The hosted web app: one page plus a small JSON API around the advice engine.
 
 Run locally:  uv run fpl-advisor-web        (http://localhost:8000)
-Environment:  PORT (default 8000), FPL_DATA_DIR (default ./data) for caches and alert subscriptions,
+Environment:  PORT (default 8000), FPL_DATA_DIR (default ./data) for caches, FPL_ALERTS=1 for phone alerts (off),
               FORWARDED_ALLOW_IPS (set to "*" behind a hosting proxy so visitors' real IPs are used).
 """
 
@@ -186,9 +186,15 @@ class RateLimiter:
 
 
 def create_app(
-    client: FPLClient | None = None, start_background: bool = True
+    client: FPLClient | None = None,
+    start_background: bool = True,
+    alerts: bool | None = None,
 ) -> FastAPI:
+    """`alerts` turns on the phone-alert sign-up routes and scheduler. They're off on the hosted
+    site for now (advice is website-only); FPL_ALERTS=1 turns them back on."""
     load_dotenv()  # also installs key redaction for every log record
+    if alerts is None:
+        alerts = os.environ.get("FPL_ALERTS", "").strip() == "1"
     if start_background:
         usage.warn_if_ephemeral()
     client = client or FPLClient(data_dir() / "cache")
@@ -203,7 +209,8 @@ def create_app(
             worlds.warm_in_background()
             _start_cache_pruner(client)
             _start_signals(worlds, hub)
-            _start_alerts(app)
+            if alerts:
+                _start_alerts(app)
         yield
 
     app = FastAPI(title="FPL Advisor", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -284,7 +291,8 @@ def create_app(
             msg = "That request wasn't in the expected format."
         return JSONResponse({"error": msg}, status_code=422)
 
-    _include_alerts(app)
+    if alerts:
+        _include_alerts(app)
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
