@@ -1,0 +1,51 @@
+{
+  "id": "e912304de2b2ce35b473ce2ecd3d1502",
+  "sport_key": "soccer_epl",
+  "sport_title": "EPL",
+  "commence_time": "2026-11-07T12:30:00Z",
+  "home_team": "Arsenal",
+  "away_team": "Tottenham Hotspur",
+  "bookmakers": [
+    {
+      "key": "draftkings",
+      "title": "DraftKings",
+      "markets": [
+        {
+          "key": "player_goal_scorer_anytime",
+          "last_update": "2026-11-06T08:01:12Z",
+          "outcomes": [
+            {"name": "Yes", "description": "Bukayo Saka", "price": 2.5},
+            {"name": "No", "description": "Bukayo Saka", "price": 1.5},
+            {"name": "Yes", "description": "Gabriel Magalhães", "price": 6.0},
+            {"name": "Yes", "description": "Dominic Solanke", "price": 3.0},
+            {"name": "No", "description": "Dominic Solanke", "price": 1.36},
+            {"name": "Yes", "description": "Nobody McUnknown", "price": 9.0}
+          ]
+        },
+        {
+          "key": "player_assists",
+          "last_update": "2026-11-06T08:01:12Z",
+          "outcomes": [
+            {"name": "Over", "description": "Bukayo Saka", "price": 3.2, "point": 0.5},
+            {"name": "Under", "description": "Bukayo Saka", "price": 1.33, "point": 0.5},
+            {"name": "Over", "description": "Bukayo Saka", "price": 15.0, "point": 1.5}
+          ]
+        }
+      ]
+    },
+    {
+      "key": "fanduel",
+      "title": "FanDuel",
+      "markets": [
+        {
+          "key": "player_goal_scorer_anytime",
+          "last_update": "2026-11-06T08:03:40Z",
+          "outcomes": [
+            {"name": "Yes", "description": "Bukayo Saka", "price": 2.3},
+            {"name": "No", "description": "Bukayo Saka", "price": 1.6}
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "e912304de2b2ce35b473ce2ecd3d1502",
+    "sport_key": "soccer_epl",
+    "sport_title": "EPL",
+    "commence_time": "2026-11-07T12:30:00Z",
+    "home_team": "Arsenal",
+    "away_team": "Tottenham Hotspur"
+  },
+  {
+    "id": "a51bc2e0f4f8a9b0c3d2e1f0a9b8c7d6",
+    "sport_key": "soccer_epl",
+    "sport_title": "EPL",
+    "commence_time": "2026-11-07T15:00:00Z",
+    "home_team": "Manchester United",
+    "away_team": "Chelsea"
+  }
+]

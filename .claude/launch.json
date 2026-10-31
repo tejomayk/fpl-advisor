@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "fpl-advisor-web"],
+      "port": 8000
+    }
+  ]
+}

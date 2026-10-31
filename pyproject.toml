@@ -1,0 +1,29 @@
+[project]
+name = "fpl-advisor"
+version = "0.1.0"
+description = "Open-source Fantasy Premier League advisor: transfers, captain, chips, league strategy and phone alerts"
+readme = "README.md"
+authors = [
+    { name = "Tejomay Kapadia", email = "147208265+tejomayk@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "pulp>=2.9,<3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.10,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[project.scripts]
+fpl-advisor = "fpl_advisor.cli:main"
+fpl-advisor-web = "fpl_advisor.web:main"

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks a commit whose staged content includes an API key or a .env file.
+# Turn on once per clone with:  git config core.hooksPath .githooks
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_secrets.py" --staged

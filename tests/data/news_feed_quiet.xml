@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test football feed with nothing about availability</title>
+    <item>
+      <title><![CDATA[Chelsea player ratings]]></title>
+      <description><![CDATA[Who impressed at Stamford Bridge?]]></description>
+      <link>https://news.example.org/articles/ratings</link>
+      <pubDate>Fri, 30 Oct 2026 20:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

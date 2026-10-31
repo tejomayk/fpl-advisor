@@ -1,0 +1,1563 @@
+{
+  "team": {
+    "id": 1234567,
+    "name": "Your Team FC",
+    "manager": "Sample Manager",
+    "total_points": 527,
+    "value": 99.2,
+    "bank": 2.3,
+    "free_transfers": 5
+  },
+  "gameweek": {
+    "id": 9,
+    "deadline": "2026-10-31T11:00:00+00:00",
+    "hours_to_deadline": 11.8
+  },
+  "horizon": [
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "initial": false,
+  "transfers": {
+    "headline": "**Make 5 transfers** (you have 5 free).",
+    "initial": false,
+    "free_transfers": 5,
+    "count": 5,
+    "hits": 0,
+    "hit_cost": 0,
+    "hit_note": null,
+    "moves": [
+      {
+        "out": {
+          "id": 8,
+          "name": "Calafiori",
+          "team": "ARS",
+          "pos": "DEF",
+          "price": 5.9,
+          "xp_next": 2.4,
+          "xp_horizon": 16.0,
+          "fixtures": "LIV(a) HUL(H) NEW(a)",
+          "next_fixture": "LIV(a)",
+          "status": "d",
+          "chance": 75,
+          "news": "Hip injury - 75% chance of playing",
+          "price_move": null,
+          "sell_price": 5.7
+        },
+        "in": {
+          "id": 4,
+          "name": "Gabriel",
+          "team": "ARS",
+          "pos": "DEF",
+          "price": 7.9,
+          "xp_next": 5.1,
+          "xp_horizon": 27.2,
+          "fixtures": "LIV(a) HUL(H) NEW(a)",
+          "next_fixture": "LIV(a)",
+          "status": "a",
+          "chance": null,
+          "news": "",
+          "price_move": "rise",
+          "elite_own": 0.58,
+          "p_goal": 0.09,
+          "elite_in": 12
+        },
+        "gain": 11.2,
+        "why_out": "Hip injury - 75% chance of playing",
+        "why_in": "27.2 expected points over 5 weeks; fixtures LIV(a) HUL(H) NEW(a); owned by 0% of your rivals."
+      },
+      {
+        "out": {
+          "id": 418,
+          "name": "Maguire",
+          "team": "MUN",
+          "pos": "DEF",
+          "price": 4.7,
+          "xp_next": 2.3,
+          "xp_horizon": 12.8,
+          "fixtures": "CHE(a) AVL(H) LIV(a)",
+          "next_fixture": "CHE(a)",
+          "status": "a",
+          "chance": null,
+          "news": "",
+          "price_move": null,
+          "sell_price": 4.7
+        },
+        "in": {
+          "id": 112,
+          "name": "Van Hecke",
+          "team": "TOT",
+          "pos": "DEF",
+          "price": 4.9,
+          "xp_next": 4.8,
+          "xp_horizon": 22.1,
+          "fixtures": "CRY(H) LEE(a) IPS(H)",
+          "next_fixture": "CRY(H)",
+          "status": "a",
+          "chance": 100,
+          "news": "",
+          "price_move": null,
+          "elite_own": 0.31,
+          "p_goal": 0.09
+        },
+        "gain": 9.3,
+        "why_out": "only 12.8 expected points over the next 5 weeks (CHE(a) AVL(H) LIV(a))",
+        "why_in": "22.1 expected points over 5 weeks; fixtures CRY(H) LEE(a) IPS(H); owned by 8% of your rivals."
+      },
+      {
+        "out": {
+          "id": 532,
+          "name": "Ballard",
+          "team": "SUN",
+          "pos": "DEF",
+          "price": 4.8,
+          "xp_next": 0.0,
+          "xp_horizon": 4.6,
+          "fixtures": "COV(a) CHE(H) AVL(a)",
+          "next_fixture": "COV(a)",
+          "status": "i",
+          "chance": 0,
+          "news": "Hamstring injury - Unknown return date",
+          "price_move": null,
+          "sell_price": 4.8
+        },
+        "in": {
+          "id": 229,
+          "name": "Tarkowski",
+          "team": "EVE",
+          "pos": "DEF",
+          "price": 6.2,
+          "xp_next": 4.2,
+          "xp_horizon": 22.1,
+          "fixtures": "NEW(a) COV(H) BRE(a)",
+          "next_fixture": "NEW(a)",
+          "status": "a",
+          "chance": null,
+          "news": "",
+          "price_move": null,
+          "elite_own": 0.31,
+          "p_goal": 0.09
+        },
+        "gain": 17.5,
+        "why_out": "Hamstring injury - Unknown return date",
+        "why_in": "22.1 expected points over 5 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 8% of your rivals."
+      },
+      {
+        "out": {
+          "id": 454,
+          "name": "Elanga",
+          "team": "NEW",
+          "pos": "MID",
+          "price": 6.0,
+          "xp_next": 1.2,
+          "xp_horizon": 5.8,
+          "fixtures": "EVE(H) FUL(a) ARS(H)",
+          "next_fixture": "EVE(H)",
+          "status": "a",
+          "chance": 100,
+          "news": "",
+          "price_move": null,
+          "sell_price": 6.0
+        },
+        "in": {
+          "id": 68,
+          "name": "Tavernier",
+          "team": "BOU",
+          "pos": "MID",
+          "price": 6.4,
+          "xp_next": 4.9,
+          "xp_horizon": 24.4,
+          "fixtures": "LEE(H) IPS(a) NFO(H)",
+          "next_fixture": "LEE(H)",
+          "status": "a",
+          "chance": null,
+          "news": "",
+          "price_move": "rise",
+          "elite_own": 0.31,
+          "p_goal": 0.22
+        },
+        "gain": 18.6,
+        "why_out": "only 5.8 expected points over the next 5 weeks (EVE(H) FUL(a) ARS(H))",
+        "why_in": "24.4 expected points over 5 weeks; fixtures LEE(H) IPS(a) NFO(H); owned by 17% of your rivals."
+      },
+      {
+        "out": {
+          "id": 165,
+          "name": "João Pedro",
+          "team": "CHE",
+          "pos": "FWD",
+          "price": 7.8,
+          "xp_next": 0.0,
+          "xp_horizon": 8.0,
+          "fixtures": "MUN(H) SUN(a) LEE(H)",
+          "next_fixture": "MUN(H)",
+          "status": "i",
+          "chance": 0,
+          "news": "Thigh injury - Unknown return date",
+          "price_move": null,
+          "sell_price": 7.6
+        },
+        "in": {
+          "id": 249,
+          "name": "Barry",
+          "team": "EVE",
+          "pos": "FWD",
+          "price": 5.6,
+          "xp_next": 3.6,
+          "xp_horizon": 17.9,
+          "fixtures": "NEW(a) COV(H) BRE(a)",
+          "next_fixture": "NEW(a)",
+          "status": "a",
+          "chance": null,
+          "news": "",
+          "price_move": null,
+          "elite_own": 0.31,
+          "p_goal": 0.22
+        },
+        "gain": 9.9,
+        "why_out": "Thigh injury - Unknown return date",
+        "why_in": "17.9 expected points over 5 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 0% of your rivals."
+      }
+    ],
+    "squad": [],
+    "bank_after": 0.1
+  },
+  "captain": {
+    "captain": {
+      "id": 411,
+      "name": "Haaland",
+      "team": "MCI",
+      "pos": "FWD",
+      "price": 15.8,
+      "xp_next": 6.5,
+      "xp_horizon": 29.7,
+      "fixtures": "BHA(H) NFO(a) FUL(H)",
+      "next_fixture": "BHA(H)",
+      "status": "a",
+      "chance": 100,
+      "news": "",
+      "price_move": null
+    },
+    "vice": {
+      "id": 4,
+      "name": "Gabriel",
+      "team": "ARS",
+      "pos": "DEF",
+      "price": 7.9,
+      "xp_next": 5.1,
+      "xp_horizon": 27.2,
+      "fixtures": "LIV(a) HUL(H) NEW(a)",
+      "next_fixture": "LIV(a)",
+      "status": "a",
+      "chance": null,
+      "news": "",
+      "price_move": "rise"
+    },
+    "multiplier": 2,
+    "options": [
+      {
+        "id": 411,
+        "name": "Haaland",
+        "team": "MCI",
+        "pos": "FWD",
+        "price": 15.8,
+        "xp_next": 6.5,
+        "xp_horizon": 29.7,
+        "fixtures": "BHA(H) NFO(a) FUL(H)",
+        "next_fixture": "BHA(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 4,
+        "name": "Gabriel",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 7.9,
+        "xp_next": 5.1,
+        "xp_horizon": 27.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise"
+      },
+      {
+        "id": 68,
+        "name": "Tavernier",
+        "team": "BOU",
+        "pos": "MID",
+        "price": 6.4,
+        "xp_next": 4.9,
+        "xp_horizon": 24.4,
+        "fixtures": "LEE(H) IPS(a) NFO(H)",
+        "next_fixture": "LEE(H)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise"
+      }
+    ],
+    "note": "67% of your rivals captained Haaland last week. Captaining them too means their big score can't open a gap on you."
+  },
+  "lineup": {
+    "xi": [
+      {
+        "id": 109,
+        "name": "Verbruggen",
+        "team": "BHA",
+        "pos": "GKP",
+        "price": 4.6,
+        "xp_next": 2.8,
+        "xp_horizon": 15.9,
+        "fixtures": "MCI(a) BRE(H) HUL(a)",
+        "next_fixture": "MCI(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 4,
+        "name": "Gabriel",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 7.9,
+        "xp_next": 5.1,
+        "xp_horizon": 27.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise"
+      },
+      {
+        "id": 112,
+        "name": "Van Hecke",
+        "team": "TOT",
+        "pos": "DEF",
+        "price": 4.9,
+        "xp_next": 4.8,
+        "xp_horizon": 22.1,
+        "fixtures": "CRY(H) LEE(a) IPS(H)",
+        "next_fixture": "CRY(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 229,
+        "name": "Tarkowski",
+        "team": "EVE",
+        "pos": "DEF",
+        "price": 6.2,
+        "xp_next": 4.2,
+        "xp_horizon": 22.1,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 31,
+        "name": "Konsa",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 4.7,
+        "xp_next": 3.6,
+        "xp_horizon": 18.8,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 68,
+        "name": "Tavernier",
+        "team": "BOU",
+        "pos": "MID",
+        "price": 6.4,
+        "xp_next": 4.9,
+        "xp_horizon": 24.4,
+        "fixtures": "LEE(H) IPS(a) NFO(H)",
+        "next_fixture": "LEE(H)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise"
+      },
+      {
+        "id": 427,
+        "name": "Mbeumo",
+        "team": "MUN",
+        "pos": "MID",
+        "price": 7.9,
+        "xp_next": 4.7,
+        "xp_horizon": 24.5,
+        "fixtures": "CHE(a) AVL(H) LIV(a)",
+        "next_fixture": "CHE(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 154,
+        "name": "Palmer",
+        "team": "CHE",
+        "pos": "MID",
+        "price": 9.8,
+        "xp_next": 4.2,
+        "xp_horizon": 19.8,
+        "fixtures": "MUN(H) SUN(a) LEE(H)",
+        "next_fixture": "MUN(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 411,
+        "name": "Haaland",
+        "team": "MCI",
+        "pos": "FWD",
+        "price": 15.8,
+        "xp_next": 6.5,
+        "xp_horizon": 29.7,
+        "fixtures": "BHA(H) NFO(a) FUL(H)",
+        "next_fixture": "BHA(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 346,
+        "name": "Calvert-Lewin",
+        "team": "LEE",
+        "pos": "FWD",
+        "price": 6.1,
+        "xp_next": 3.7,
+        "xp_horizon": 20.1,
+        "fixtures": "BOU(a) TOT(H) CHE(a)",
+        "next_fixture": "BOU(a)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 249,
+        "name": "Barry",
+        "team": "EVE",
+        "pos": "FWD",
+        "price": 5.6,
+        "xp_next": 3.6,
+        "xp_horizon": 17.9,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      }
+    ],
+    "bench": [
+      {
+        "id": 496,
+        "name": "Kinsky",
+        "team": "TOT",
+        "pos": "GKP",
+        "price": 4.4,
+        "xp_next": 2.5,
+        "xp_horizon": 12.1,
+        "fixtures": "CRY(H) LEE(a) IPS(H)",
+        "next_fixture": "CRY(H)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 565,
+        "name": "M.Sangaré",
+        "team": "BRE",
+        "pos": "MID",
+        "price": 5.4,
+        "xp_next": 2.9,
+        "xp_horizon": 14.2,
+        "fixtures": "NFO(H) BHA(a) EVE(H)",
+        "next_fixture": "NFO(H)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 305,
+        "name": "Davis",
+        "team": "IPS",
+        "pos": "DEF",
+        "price": 4.0,
+        "xp_next": 2.8,
+        "xp_horizon": 14.5,
+        "fixtures": "HUL(a) BOU(H) TOT(a)",
+        "next_fixture": "HUL(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null
+      },
+      {
+        "id": 557,
+        "name": "Tzolis",
+        "team": "ARS",
+        "pos": "MID",
+        "price": 6.1,
+        "xp_next": 1.1,
+        "xp_horizon": 7.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "d",
+        "chance": 75,
+        "news": "Hamstring injury - 75% chance of playing",
+        "price_move": null
+      }
+    ],
+    "captain_id": 411,
+    "vice_id": 4,
+    "expected_points": 54.5,
+    "bench_boost": false
+  },
+  "chips": [
+    {
+      "chip": "wildcard",
+      "name": "Wildcard",
+      "play_now": false,
+      "expires_gw": 19,
+      "reason": "Rebuilding your whole squad would add about +3.4 expected points over the next 5 weeks compared with your best normal transfers (12 changes). That's below the 15-point bar, so keep it. Wildcards are best used when you have several problems at once, like injuries or many players with bad fixtures."
+    },
+    {
+      "chip": "freehit",
+      "name": "Free Hit",
+      "play_now": false,
+      "expires_gw": 19,
+      "reason": "A one-week squad would score about +2.5 more than your planned team this week. Free Hit is best saved for a week when many teams have no match or play twice."
+    },
+    {
+      "chip": "3xc",
+      "name": "Triple Captain",
+      "play_now": false,
+      "expires_gw": 19,
+      "reason": "Triple Captain on Haaland is worth about 6.5 extra points this week. GW15 looks better (Haaland, 7.0), so keep it for then."
+    }
+  ],
+  "chip_now": null,
+  "timing": [
+    "Buy Gabriel before prices update tonight (about 01:30 UK): Gabriel is likely to rise by £0.1m, and that money would let you afford slightly better players later.",
+    "Buy Tavernier before prices update tonight (about 01:30 UK): Tavernier is likely to rise by £0.1m, and that money would let you afford slightly better players later."
+  ],
+  "league": {
+    "name": "Sample League",
+    "rank": 2,
+    "size": 13,
+    "table": [
+      {
+        "rank": 1,
+        "manager": "Rival 1",
+        "team_name": "Team 1",
+        "total": 551,
+        "event_total": 45,
+        "is_me": false
+      },
+      {
+        "rank": 2,
+        "manager": "You",
+        "team_name": "Your Team FC",
+        "total": 527,
+        "event_total": 50,
+        "is_me": true
+      },
+      {
+        "rank": 3,
+        "manager": "Rival 3",
+        "team_name": "Team 3",
+        "total": 511,
+        "event_total": 53,
+        "is_me": false
+      },
+      {
+        "rank": 4,
+        "manager": "Rival 4",
+        "team_name": "Team 4",
+        "total": 510,
+        "event_total": 45,
+        "is_me": false
+      },
+      {
+        "rank": 5,
+        "manager": "Rival 5",
+        "team_name": "Team 5",
+        "total": 510,
+        "event_total": 48,
+        "is_me": false
+      },
+      {
+        "rank": 6,
+        "manager": "Rival 6",
+        "team_name": "Team 6",
+        "total": 495,
+        "event_total": 44,
+        "is_me": false
+      },
+      {
+        "rank": 7,
+        "manager": "Rival 7",
+        "team_name": "Team 7",
+        "total": 493,
+        "event_total": 41,
+        "is_me": false
+      },
+      {
+        "rank": 8,
+        "manager": "Rival 8",
+        "team_name": "Team 8",
+        "total": 483,
+        "event_total": 33,
+        "is_me": false
+      },
+      {
+        "rank": 9,
+        "manager": "Rival 9",
+        "team_name": "Team 9",
+        "total": 467,
+        "event_total": 36,
+        "is_me": false
+      },
+      {
+        "rank": 10,
+        "manager": "Rival 10",
+        "team_name": "Team 10",
+        "total": 466,
+        "event_total": 41,
+        "is_me": false
+      }
+    ],
+    "gap_to_leader": 24,
+    "target": 2300,
+    "required_per_gw": 59.1,
+    "my_average": 65.9,
+    "remaining_gws": 30,
+    "last_season_best": {
+      "manager": "Rival 4",
+      "points": 2039
+    },
+    "strategy": "You are 24 points behind the leader with 30 gameweeks left. That gap is 0.3 times a typical swing over that period. The advisor leans slightly toward players your rivals don't own, because you only catch up when your players outscore theirs.",
+    "risk_lambda": 0.058,
+    "threats": [
+      {
+        "id": 115,
+        "name": "De Cuyper",
+        "team": "BHA",
+        "pos": "DEF",
+        "price": 5.3,
+        "xp_next": 2.9,
+        "xp_horizon": 18.5,
+        "fixtures": "MCI(a) BRE(H) HUL(a)",
+        "next_fixture": "MCI(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.75
+      },
+      {
+        "id": 40,
+        "name": "Rogers",
+        "team": "CHE",
+        "pos": "MID",
+        "price": 8.0,
+        "xp_next": 4.1,
+        "xp_horizon": 19.7,
+        "fixtures": "MUN(H) SUN(a) LEE(H)",
+        "next_fixture": "MUN(H)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise",
+        "ownership": 0.67
+      },
+      {
+        "id": 426,
+        "name": "B.Fernandes",
+        "team": "MUN",
+        "pos": "MID",
+        "price": 11.7,
+        "xp_next": 4.3,
+        "xp_horizon": 22.4,
+        "fixtures": "CHE(a) AVL(H) LIV(a)",
+        "next_fixture": "CHE(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.67
+      },
+      {
+        "id": 15,
+        "name": "Ødegaard",
+        "team": "ARS",
+        "pos": "MID",
+        "price": 6.7,
+        "xp_next": 3.1,
+        "xp_horizon": 17.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.58
+      },
+      {
+        "id": 124,
+        "name": "Groß",
+        "team": "BHA",
+        "pos": "MID",
+        "price": 6.2,
+        "xp_next": 3.2,
+        "xp_horizon": 17.4,
+        "fixtures": "MCI(a) BRE(H) HUL(a)",
+        "next_fixture": "MCI(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.58
+      }
+    ],
+    "differentials": [
+      {
+        "id": 4,
+        "name": "Gabriel",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 7.9,
+        "xp_next": 5.1,
+        "xp_horizon": 27.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise",
+        "ownership": 0
+      },
+      {
+        "id": 249,
+        "name": "Barry",
+        "team": "EVE",
+        "pos": "FWD",
+        "price": 5.6,
+        "xp_next": 3.6,
+        "xp_horizon": 17.9,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "ownership": 0
+      },
+      {
+        "id": 112,
+        "name": "Van Hecke",
+        "team": "TOT",
+        "pos": "DEF",
+        "price": 4.9,
+        "xp_next": 4.8,
+        "xp_horizon": 22.1,
+        "fixtures": "CRY(H) LEE(a) IPS(H)",
+        "next_fixture": "CRY(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.08
+      },
+      {
+        "id": 229,
+        "name": "Tarkowski",
+        "team": "EVE",
+        "pos": "DEF",
+        "price": 6.2,
+        "xp_next": 4.2,
+        "xp_horizon": 22.1,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.08
+      },
+      {
+        "id": 68,
+        "name": "Tavernier",
+        "team": "BOU",
+        "pos": "MID",
+        "price": 6.4,
+        "xp_next": 4.9,
+        "xp_horizon": 24.4,
+        "fixtures": "LEE(H) IPS(a) NFO(H)",
+        "next_fixture": "LEE(H)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise",
+        "ownership": 0.17
+      },
+      {
+        "id": 154,
+        "name": "Palmer",
+        "team": "CHE",
+        "pos": "MID",
+        "price": 9.8,
+        "xp_next": 4.2,
+        "xp_horizon": 19.8,
+        "fixtures": "MUN(H) SUN(a) LEE(H)",
+        "next_fixture": "MUN(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null,
+        "ownership": 0.17
+      }
+    ],
+    "rival_chips": [
+      {
+        "manager": "Rival 1",
+        "chips": [
+          "Wildcard"
+        ]
+      },
+      {
+        "manager": "Rival 2",
+        "chips": [
+          "Wildcard",
+          "Bench Boost",
+          "Triple Captain"
+        ]
+      },
+      {
+        "manager": "Rival 3",
+        "chips": [
+          "Wildcard",
+          "Free Hit",
+          "Bench Boost",
+          "Triple Captain"
+        ]
+      },
+      {
+        "manager": "Rival 4",
+        "chips": [
+          "Wildcard",
+          "Free Hit",
+          "Bench Boost",
+          "Triple Captain"
+        ]
+      },
+      {
+        "manager": "Rival 5",
+        "chips": [
+          "Wildcard",
+          "Free Hit",
+          "Bench Boost",
+          "Triple Captain"
+        ]
+      }
+    ]
+  },
+  "notes": [
+    "FPL only shows your squad after each deadline, so transfers you've already made for this gameweek aren't counted here."
+  ],
+  "elite": {
+    "managers": 100,
+    "gameweek": 8,
+    "seasons": [
+      "2023/24",
+      "2024/25",
+      "2025/26"
+    ],
+    "median_rank": 21500,
+    "most_owned": [
+      {
+        "id": 411,
+        "name": "Haaland",
+        "team": "MCI",
+        "pos": "FWD",
+        "price": 15.8,
+        "xp_next": 6.5,
+        "xp_horizon": 29.7,
+        "fixtures": "BHA(H) NFO(a) FUL(H)",
+        "next_fixture": "BHA(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.94,
+        "elite_captain": 0.62,
+        "elite_in": 0,
+        "elite_out": 0,
+        "in_your_team": true
+      },
+      {
+        "id": 4,
+        "name": "Gabriel",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 7.9,
+        "xp_next": 5.1,
+        "xp_horizon": 27.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise",
+        "elite_own": 0.71,
+        "elite_captain": 0,
+        "elite_in": 0,
+        "elite_out": 0,
+        "in_your_team": true
+      },
+      {
+        "id": 154,
+        "name": "Palmer",
+        "team": "CHE",
+        "pos": "MID",
+        "price": 9.8,
+        "xp_next": 4.2,
+        "xp_horizon": 19.8,
+        "fixtures": "MUN(H) SUN(a) LEE(H)",
+        "next_fixture": "MUN(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.55,
+        "elite_captain": 0.11,
+        "elite_in": 0,
+        "elite_out": 0,
+        "in_your_team": true
+      },
+      {
+        "id": 427,
+        "name": "Mbeumo",
+        "team": "MUN",
+        "pos": "MID",
+        "price": 7.9,
+        "xp_next": 4.7,
+        "xp_horizon": 24.5,
+        "fixtures": "CHE(a) AVL(H) LIV(a)",
+        "next_fixture": "CHE(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.47,
+        "elite_captain": 0.04,
+        "elite_in": 0,
+        "elite_out": 0,
+        "in_your_team": true
+      },
+      {
+        "id": 31,
+        "name": "Konsa",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 4.7,
+        "xp_next": 3.6,
+        "xp_horizon": 18.8,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.33,
+        "elite_captain": 0,
+        "elite_in": 0,
+        "elite_out": 0,
+        "in_your_team": true
+      }
+    ],
+    "missing": [
+      {
+        "id": 229,
+        "name": "Tarkowski",
+        "team": "EVE",
+        "pos": "DEF",
+        "price": 6.2,
+        "xp_next": 4.2,
+        "xp_horizon": 22.1,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.41,
+        "elite_captain": 0,
+        "elite_in": 9,
+        "elite_out": 0,
+        "in_your_team": false
+      },
+      {
+        "id": 249,
+        "name": "Barry",
+        "team": "EVE",
+        "pos": "FWD",
+        "price": 5.6,
+        "xp_next": 3.6,
+        "xp_horizon": 17.9,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.29,
+        "elite_captain": 0,
+        "elite_in": 6,
+        "elite_out": 1,
+        "in_your_team": false
+      }
+    ],
+    "bought": [
+      {
+        "id": 4,
+        "name": "Gabriel",
+        "team": "ARS",
+        "pos": "DEF",
+        "price": 7.9,
+        "xp_next": 5.1,
+        "xp_horizon": 27.2,
+        "fixtures": "LIV(a) HUL(H) NEW(a)",
+        "next_fixture": "LIV(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": "rise",
+        "elite_own": 0.58,
+        "elite_captain": 0,
+        "elite_in": 12,
+        "elite_out": 1,
+        "in_your_team": false
+      },
+      {
+        "id": 229,
+        "name": "Tarkowski",
+        "team": "EVE",
+        "pos": "DEF",
+        "price": 6.2,
+        "xp_next": 4.2,
+        "xp_horizon": 22.1,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.41,
+        "elite_captain": 0,
+        "elite_in": 9,
+        "elite_out": 0,
+        "in_your_team": false
+      },
+      {
+        "id": 249,
+        "name": "Barry",
+        "team": "EVE",
+        "pos": "FWD",
+        "price": 5.6,
+        "xp_next": 3.6,
+        "xp_horizon": 17.9,
+        "fixtures": "NEW(a) COV(H) BRE(a)",
+        "next_fixture": "NEW(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "elite_own": 0.29,
+        "elite_captain": 0,
+        "elite_in": 6,
+        "elite_out": 1,
+        "in_your_team": false
+      }
+    ],
+    "sold": [
+      {
+        "id": 418,
+        "name": "Maguire",
+        "team": "MUN",
+        "pos": "DEF",
+        "price": 4.7,
+        "xp_next": 2.3,
+        "xp_horizon": 12.8,
+        "fixtures": "CHE(a) AVL(H) LIV(a)",
+        "next_fixture": "CHE(a)",
+        "status": "a",
+        "chance": null,
+        "news": "",
+        "price_move": null,
+        "sell_price": 4.7,
+        "elite_own": 0.08,
+        "elite_captain": 0,
+        "elite_in": 0,
+        "elite_out": 9,
+        "in_your_team": true
+      },
+      {
+        "id": 454,
+        "name": "Elanga",
+        "team": "NEW",
+        "pos": "MID",
+        "price": 6.0,
+        "xp_next": 1.2,
+        "xp_horizon": 5.8,
+        "fixtures": "EVE(H) FUL(a) ARS(H)",
+        "next_fixture": "EVE(H)",
+        "status": "a",
+        "chance": 100,
+        "news": "",
+        "price_move": null,
+        "sell_price": 6.0,
+        "elite_own": 0.05,
+        "elite_captain": 0,
+        "elite_in": 0,
+        "elite_out": 7,
+        "in_your_team": true
+      }
+    ]
+  },
+  "sources": {
+    "elite": "2026-10-31T09:00:00+00:00",
+    "creators": "2026-10-30T20:15:00+00:00"
+  },
+  "creators": {
+    "gameweek": 9,
+    "deadline": "2026-10-31T11:00:00+00:00",
+    "creators": [
+      {
+        "name": "FPL Harry",
+        "handle": "FPLHarry",
+        "channel_url": "https://www.youtube.com/@FPLHarry",
+        "video": {
+          "title": "GW9 FINAL TEAM SELECTION | João Pedro IN!",
+          "url": "https://www.youtube.com/@FPLHarry/videos",
+          "published": "2026-10-30T17:00:00+00:00"
+        },
+        "read": true,
+        "summary": "Selling Elanga for João Pedro and keeping the armband on Haaland.",
+        "considering_in": [],
+        "considering_out": [],
+        "captain_options": [],
+        "decided_in": [
+          {
+            "id": 165,
+            "name": "João Pedro",
+            "team": "CHE"
+          }
+        ],
+        "decided_out": [
+          {
+            "id": 454,
+            "name": "Elanga",
+            "team": "NEW"
+          }
+        ],
+        "captain": {
+          "id": 411,
+          "name": "Haaland",
+          "team": "MCI"
+        },
+        "chip": null,
+        "actual": {
+          "gameweek": 8,
+          "transfers_in": [
+            {
+              "id": 68,
+              "name": "Tavernier",
+              "team": "BOU"
+            }
+          ],
+          "transfers_out": [
+            {
+              "id": 15,
+              "name": "Ødegaard",
+              "team": "ARS"
+            }
+          ],
+          "captain": {
+            "id": 411,
+            "name": "Haaland",
+            "team": "MCI"
+          },
+          "chip": null,
+          "hit": 0
+        }
+      },
+      {
+        "name": "Let's Talk FPL",
+        "handle": "LetsTalkFPL",
+        "channel_url": "https://www.youtube.com/@LetsTalkFPL",
+        "video": {
+          "title": "GW9 Transfer Plans: Elanga out?",
+          "url": "https://www.youtube.com/@LetsTalkFPL/videos",
+          "published": "2026-10-29T12:00:00+00:00"
+        },
+        "read": true,
+        "summary": "Weighing João Pedro or Mbeumo for Elanga; Haaland captain unless Palmer looks fully fit.",
+        "considering_in": [
+          {
+            "id": 165,
+            "name": "João Pedro",
+            "team": "CHE"
+          },
+          {
+            "id": 427,
+            "name": "Mbeumo",
+            "team": "MUN"
+          }
+        ],
+        "considering_out": [
+          {
+            "id": 454,
+            "name": "Elanga",
+            "team": "NEW"
+          }
+        ],
+        "captain_options": [
+          {
+            "id": 411,
+            "name": "Haaland",
+            "team": "MCI"
+          },
+          {
+            "id": 154,
+            "name": "Palmer",
+            "team": "CHE"
+          }
+        ],
+        "decided_in": [],
+        "decided_out": [],
+        "captain": null,
+        "chip": null,
+        "actual": null
+      },
+      {
+        "name": "FPLtips",
+        "handle": "FPLTips",
+        "channel_url": "https://www.youtube.com/@FPLTips",
+        "video": {
+          "title": "Gameweek 9 Final Thoughts | Palmer captain?",
+          "url": "https://www.youtube.com/@FPLTips/videos",
+          "published": "2026-10-30T19:30:00+00:00"
+        },
+        "read": true,
+        "summary": "Bringing Palmer back in for Tavernier and could captain Palmer over Haaland.",
+        "considering_in": [
+          {
+            "id": 154,
+            "name": "Palmer",
+            "team": "CHE"
+          }
+        ],
+        "considering_out": [
+          {
+            "id": 68,
+            "name": "Tavernier",
+            "team": "BOU"
+          }
+        ],
+        "captain_options": [
+          {
+            "id": 154,
+            "name": "Palmer",
+            "team": "CHE"
+          },
+          {
+            "id": 411,
+            "name": "Haaland",
+            "team": "MCI"
+          }
+        ],
+        "decided_in": [],
+        "decided_out": [],
+        "captain": null,
+        "chip": null,
+        "actual": null
+      },
+      {
+        "name": "FPL Focal",
+        "handle": "FPLFocal",
+        "channel_url": "https://www.youtube.com/@FPLFocal",
+        "video": {
+          "title": "GW9 TEAM SELECTION",
+          "url": "https://www.youtube.com/@FPLFocal/videos",
+          "published": "2026-10-30T20:00:00+00:00"
+        },
+        "read": true,
+        "summary": "Likely João Pedro in for Elanga, Haaland captain, rolling the transfer if team news is bad.",
+        "considering_in": [
+          {
+            "id": 165,
+            "name": "João Pedro",
+            "team": "CHE"
+          }
+        ],
+        "considering_out": [
+          {
+            "id": 454,
+            "name": "Elanga",
+            "team": "NEW"
+          }
+        ],
+        "captain_options": [],
+        "decided_in": [],
+        "decided_out": [],
+        "captain": {
+          "id": 411,
+          "name": "Haaland",
+          "team": "MCI"
+        },
+        "chip": null,
+        "actual": {
+          "gameweek": 8,
+          "transfers_in": [],
+          "transfers_out": [],
+          "captain": {
+            "id": 411,
+            "name": "Haaland",
+            "team": "MCI"
+          },
+          "chip": null,
+          "hit": 0
+        }
+      },
+      {
+        "name": "FPL Raptor",
+        "handle": "FPLRaptor",
+        "channel_url": "https://www.youtube.com/@FPLRaptor",
+        "video": {
+          "title": "GW9 WILDCARD DRAFT | Selling Mbeumo",
+          "url": "https://www.youtube.com/@FPLRaptor/videos",
+          "published": "2026-10-28T18:00:00+00:00"
+        },
+        "read": true,
+        "summary": "Playing the Wildcard: João Pedro, Gabriel and Palmer in, Mbeumo out, Palmer the likely captain.",
+        "considering_in": [
+          {
+            "id": 165,
+            "name": "João Pedro",
+            "team": "CHE"
+          },
+          {
+            "id": 4,
+            "name": "Gabriel",
+            "team": "ARS"
+          },
+          {
+            "id": 154,
+            "name": "Palmer",
+            "team": "CHE"
+          }
+        ],
+        "considering_out": [
+          {
+            "id": 427,
+            "name": "Mbeumo",
+            "team": "MUN"
+          }
+        ],
+        "captain_options": [
+          {
+            "id": 154,
+            "name": "Palmer",
+            "team": "CHE"
+          },
+          {
+            "id": 411,
+            "name": "Haaland",
+            "team": "MCI"
+          }
+        ],
+        "decided_in": [],
+        "decided_out": [],
+        "captain": null,
+        "chip": "wildcard",
+        "actual": null
+      },
+      {
+        "name": "FPL Fran",
+        "handle": "FPLFran",
+        "channel_url": "https://www.youtube.com/@FPLFran",
+        "video": null,
+        "read": false,
+        "summary": null,
+        "considering_in": [],
+        "considering_out": [],
+        "captain_options": [],
+        "decided_in": [],
+        "decided_out": [],
+        "captain": null,
+        "chip": null,
+        "actual": {
+          "gameweek": 8,
+          "transfers_in": [
+            {
+              "id": 426,
+              "name": "B.Fernandes",
+              "team": "MUN"
+            }
+          ],
+          "transfers_out": [
+            {
+              "id": 427,
+              "name": "Mbeumo",
+              "team": "MUN"
+            }
+          ],
+          "captain": {
+            "id": 426,
+            "name": "B.Fernandes",
+            "team": "MUN"
+          },
+          "chip": null,
+          "hit": 4
+        }
+      }
+    ],
+    "agree": [
+      {
+        "kind": "buy",
+        "player": {
+          "id": 165,
+          "name": "João Pedro",
+          "team": "CHE",
+          "in_your_team": false
+        },
+        "count": 4,
+        "of": 5,
+        "who": [
+          "FPL Harry",
+          "Let's Talk FPL",
+          "FPL Focal",
+          "FPL Raptor"
+        ],
+        "text": "4 of 5 are thinking of buying João Pedro."
+      },
+      {
+        "kind": "sell",
+        "player": {
+          "id": 454,
+          "name": "Elanga",
+          "team": "NEW",
+          "in_your_team": false
+        },
+        "count": 3,
+        "of": 5,
+        "who": [
+          "FPL Harry",
+          "Let's Talk FPL",
+          "FPL Focal"
+        ],
+        "text": "3 of 5 are thinking of selling Elanga."
+      },
+      {
+        "kind": "captain",
+        "player": {
+          "id": 411,
+          "name": "Haaland",
+          "team": "MCI",
+          "in_your_team": true
+        },
+        "count": 3,
+        "of": 5,
+        "who": [
+          "FPL Harry",
+          "Let's Talk FPL",
+          "FPL Focal"
+        ],
+        "text": "3 of 5 are leaning towards captaining Haaland."
+      }
+    ],
+    "split": [
+      {
+        "kind": "transfer",
+        "player": {
+          "id": 427,
+          "name": "Mbeumo",
+          "team": "MUN",
+          "in_your_team": true
+        },
+        "buying": [
+          "Let's Talk FPL"
+        ],
+        "selling": [
+          "FPL Raptor"
+        ],
+        "text": "Let's Talk FPL wants to buy Mbeumo, but FPL Raptor is selling."
+      },
+      {
+        "kind": "captain",
+        "options": [
+          {
+            "player": {
+              "id": 411,
+              "name": "Haaland",
+              "team": "MCI",
+              "in_your_team": true
+            },
+            "who": [
+              "FPL Harry",
+              "Let's Talk FPL",
+              "FPL Focal"
+            ]
+          },
+          {
+            "player": {
+              "id": 154,
+              "name": "Palmer",
+              "team": "CHE",
+              "in_your_team": true
+            },
+            "who": [
+              "FPLtips",
+              "FPL Raptor"
+            ]
+          }
+        ],
+        "text": "Captain is split: Haaland (3); Palmer (2)."
+      }
+    ],
+    "with_plan": 5,
+    "with_video": 5,
+    "read_by_llm": true,
+    "actual_gameweek": 8,
+    "updated": "2026-10-30T20:15:00+00:00"
+  }
+}

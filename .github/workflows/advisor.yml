@@ -1,0 +1,79 @@
+# Runs fpl-advisor every hour and sends deadline, price, injury and chip alerts to your phone.
+#
+# To use this in your fork, set three things in Settings -> Secrets and variables -> Actions:
+#   1. Variable  FPL_TEAM_ID   your team ID (number after /entry/ in your FPL Points page URL)
+#   2. Secret    NTFY_TOPIC    a long, hard-to-guess topic name; subscribe to it in the ntfy app
+#   3. Variable  FPL_LEAGUE_ID (optional) your mini-league ID
+# Optional: Variable NTFY_SERVER if you self-host ntfy (default https://ntfy.sh).
+# Until FPL_TEAM_ID is set, the job is skipped, so unconfigured forks do not fail.
+name: advisor
+
+on:
+  schedule:
+    - cron: "17 * * * *" # minute 17 avoids the busy top of the hour
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FPL_TEAM_ID: ${{ vars.FPL_TEAM_ID }}
+      FPL_LEAGUE_ID: ${{ vars.FPL_LEAGUE_ID }}
+      FPL_NOTIFY: ntfy
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      NTFY_SERVER: ${{ vars.NTFY_SERVER || 'https://ntfy.sh' }}
+    steps:
+      - name: Skip if not configured
+        id: gate
+        run: |
+          if [ -z "$FPL_TEAM_ID" ]; then
+            echo "FPL_TEAM_ID is not set; skipping. See the comments at the top of this file."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      # Refuse to run if the checked-out files contain a key. This checks the current tree only;
+      # commits and history are checked by secrets.yml on every push and pull request.
+      - name: Scan for leaked keys
+        if: steps.gate.outputs.run == 'true'
+        run: python3 scripts/check_secrets.py
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.gate.outputs.run == 'true'
+
+      # Restore/save keeps alert state between runs (so each alert fires once).
+      # A unique key per run always saves; restore-keys picks up the latest earlier one.
+      - uses: actions/cache/restore@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          path: |
+            .cache
+            state
+          key: fpl-advisor-${{ github.run_id }}
+          restore-keys: |
+            fpl-advisor-
+
+      - name: Check for alerts
+        if: steps.gate.outputs.run == 'true'
+        run: uv run fpl-advisor check
+
+      # Save even if the check failed part-way, so alerts already sent are not sent again.
+      - uses: actions/cache/save@v4
+        if: always() && steps.gate.outputs.run == 'true'
+        with:
+          path: |
+            .cache
+            state
+          key: fpl-advisor-${{ github.run_id }}

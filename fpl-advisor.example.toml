@@ -1,0 +1,39 @@
+# Copy to fpl-advisor.toml (gitignored) and edit. Every setting except team_id is optional.
+# Environment variables (FPL_TEAM_ID, NTFY_TOPIC, ...) override this file.
+
+# Your FPL team ID: the number after /entry/ in the URL of your Points page on
+# fantasy.premierleague.com, e.g. .../entry/1234567/event/10 -> 1234567
+team_id = 1234567
+
+# Mini-league ID (the number in your league's standings URL). Omit for no league view.
+# league_id = 7654321
+
+# Where alerts go: "stdout" (print to the terminal) or "ntfy" (phone push).
+notify = "stdout"
+
+# ntfy settings, used when notify = "ntfy". Choose a long, hard-to-guess topic name:
+# anyone who knows it can read your alerts on the public server.
+# ntfy_server = "https://ntfy.sh"
+# ntfy_topic = "your-long-random-topic"
+# ntfy_token = ""   # only for servers with access control
+
+# Hours before the gameweek deadline at which to remind you.
+reminder_hours = [24, 2]
+
+# Strategy risk: "auto" (adapts to your league position), "low", "medium" or "high".
+risk = "auto"
+
+# Most points-costing extra transfers (hits, -4 each) the advisor may suggest.
+max_hits = 2
+
+# Where to keep downloaded FPL data and alert state.
+cache_dir = ".cache"
+state_path = "state/alerts.json"
+
+# Creator room (needs YOUTUBE_API_KEY). Keys are YouTube @handles. A number is that creator's
+# FPL entry ID this season (shows what they actually did after each deadline); false stops
+# following a default channel; true adds a channel. Env FPL_CREATORS overrides this.
+# [creators]
+# FPLHarry = 1234567
+# FPLRaptor = false
+# SomeOtherHandle = { name = "Some Other Creator", entry = 7654321 }

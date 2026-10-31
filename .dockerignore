@@ -1,0 +1,17 @@
+.venv
+.cache
+.git
+.gitignore
+data
+state
+fpl-advisor.toml
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+tests
+docs
+# Keys never go into the image: pass them as the host's secrets / environment variables.
+.env
+.env.*
+*.env

@@ -1,0 +1,94 @@
+[
+  {
+    "id": "e912304de2b2ce35b473ce2ecd3d1502",
+    "sport_key": "soccer_epl",
+    "sport_title": "EPL",
+    "commence_time": "2026-11-07T12:30:00Z",
+    "home_team": "Arsenal",
+    "away_team": "Tottenham Hotspur",
+    "bookmakers": [
+      {
+        "key": "williamhill",
+        "title": "William Hill",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-11-05T09:12:44Z",
+            "outcomes": [
+              {"name": "Arsenal", "price": 1.8},
+              {"name": "Tottenham Hotspur", "price": 4.2},
+              {"name": "Draw", "price": 3.9}
+            ]
+          },
+          {
+            "key": "totals",
+            "last_update": "2026-11-05T09:12:44Z",
+            "outcomes": [
+              {"name": "Over", "price": 1.75, "point": 2.5},
+              {"name": "Under", "price": 2.05, "point": 2.5}
+            ]
+          }
+        ]
+      },
+      {
+        "key": "paddypower",
+        "title": "Paddy Power",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-11-05T09:10:03Z",
+            "outcomes": [
+              {"name": "Arsenal", "price": 1.83},
+              {"name": "Tottenham Hotspur", "price": 4.0},
+              {"name": "Draw", "price": 3.8}
+            ]
+          },
+          {
+            "key": "totals",
+            "last_update": "2026-11-05T09:10:03Z",
+            "outcomes": [
+              {"name": "Over", "price": 1.72, "point": 2.5},
+              {"name": "Under", "price": 2.1, "point": 2.5},
+              {"name": "Over", "price": 3.1, "point": 3.5},
+              {"name": "Under", "price": 1.36, "point": 3.5}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "a51bc2e0f4f8a9b0c3d2e1f0a9b8c7d6",
+    "sport_key": "soccer_epl",
+    "sport_title": "EPL",
+    "commence_time": "2026-11-07T15:00:00Z",
+    "home_team": "Manchester United",
+    "away_team": "Chelsea",
+    "bookmakers": [
+      {
+        "key": "williamhill",
+        "title": "William Hill",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-11-05T09:12:44Z",
+            "outcomes": [
+              {"name": "Manchester United", "price": 2.6},
+              {"name": "Chelsea", "price": 2.6},
+              {"name": "Draw", "price": 3.5}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "c0ffee00c0ffee00c0ffee00c0ffee00",
+    "sport_key": "soccer_epl",
+    "sport_title": "EPL",
+    "commence_time": "2026-11-08T14:00:00Z",
+    "home_team": "Atlantis FC",
+    "away_team": "Chelsea",
+    "bookmakers": []
+  }
+]
