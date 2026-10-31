@@ -44,7 +44,7 @@ SIGNALS_MIN_GAP_SECONDS = 5 * 60
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
         "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     ),
     "X-Content-Type-Options": "nosniff",

@@ -143,12 +143,11 @@ function showLoading() {
   clearTimers();
   resultsEl.hidden = true;
   document.body.classList.remove("has-results");
-  setHTML(statusEl, html`<div class="card" role="status">
-    <div class="status-card">
-      <span class="spinner" aria-hidden="true"></span>
-      <div><p class="title" id="load-title">Working out your best moves…</p>
-      <p class="muted" id="load-sub">Reading your squad and this week's fixtures.</p></div>
-    </div>
+  setHTML(statusEl, html`<div class="status-panel" role="status">
+    <span class="progress" aria-hidden="true"><span></span></span>
+    <p class="kicker">Building your briefing</p>
+    <p class="title" id="load-title">Working out your best moves…</p>
+    <p class="muted" id="load-sub">Reading your squad and this week's fixtures.</p>
     <div class="skeleton" aria-hidden="true"><div></div><div></div><div></div></div>
   </div>`);
   revealStatus();
@@ -167,8 +166,9 @@ function showError(message) {
   clearTimers();
   resultsEl.hidden = true;
   document.body.classList.remove("has-results");
-  setHTML(statusEl, html`<div class="card status-card error" role="alert">
-    <div><p class="title">We couldn't get your advice</p><p>${message}</p></div>
+  setHTML(statusEl, html`<div class="status-panel error" role="alert">
+    <p class="kicker">Something's not right</p>
+    <p class="title">We couldn't get your advice</p><p>${message}</p>
   </div>`);
   revealStatus();
 }
@@ -309,17 +309,29 @@ function newsBadge(p) {
 }
 
 /* ---------------- Sections ---------------- */
+// Editorial section header: small-caps kicker over a condensed headline.
+function secHead(id, kicker, title, extra) {
+  return html`<header class="sec-head">
+    ${kicker ? html`<p class="kicker">${kicker}</p>` : ""}
+    <h2 id="${id}" class="sec-title">${title}</h2>
+    ${extra || ""}
+  </header>`;
+}
+
+// Small two-tone kit swatch for a club (decorative).
+const kitDot = (team) => html`<span class="kitdot" style="${kitStyle(team)}" aria-hidden="true"></span>`;
+
 function renderResults(d, demo) {
   return html`<div class="results">
     ${summary(d, demo)}
     <div class="cols">
-      <div class="col">
+      <div class="col col-main">
         <div class="o1">${moves(d)}</div>
-        <div class="o3">${lineup(d)}</div>
+        <div class="o4">${lineup(d)}</div>
       </div>
-      <div class="col">
+      <div class="col col-side">
         <div class="o2">${captain(d)}</div>
-        <div class="o4">${chips(d)}</div>
+        <div class="o3">${chips(d)}</div>
         <div class="o5">${timing(d)}</div>
       </div>
     </div>
@@ -335,13 +347,13 @@ function summary(d, demo) {
   const newSquad = !!(d.transfers?.initial || d.initial);
   const deadline = Date.parse(gw.deadline);
   const chipNow = d.chip_now ? (d.chips || []).find((c) => c.play_now && (d.chip_now_code ? c.chip === d.chip_now_code : c.name === d.chip_now)) : null;
-  return html`<section class="card summary" aria-labelledby="results-title">
-    <div class="summary-top">
+  return html`<section class="scoreboard" aria-labelledby="results-title">
+    <div class="sb-top">
       <div class="who">
-        <p class="eyebrow">${isNum(gw.id) ? `Gameweek ${gw.id} advice` : "This week's advice"}
+        <p class="kicker">${isNum(gw.id) ? `Gameweek ${gw.id} briefing` : "This week's briefing"}
           ${demo ? html`<span class="pill sample">Sample data</span>` : ""}</p>
         <h2 id="results-title" tabindex="-1">${t.name || "Your team"}</h2>
-        <p class="muted">${[t.manager, isNum(t.id) && !demo ? `Team ${t.id}` : null].filter(Boolean).join(" · ")}</p>
+        <p class="who-meta">${[t.manager, isNum(t.id) && !demo ? `Team ${t.id}` : null].filter(Boolean).join(" · ")}</p>
       </div>
       ${Number.isFinite(deadline) ? html`<div class="deadline">
         <span class="label">Deadline in</span>
@@ -370,14 +382,27 @@ function sidePlayer(p, dir, why) {
   // why_out often repeats the injury news; show it once.
   const showNews = a && !(why && p.news && why.trim() === p.news.trim());
   return html`<div class="side ${dir}">
-    <div class="side-head"><span class="dir">${isOut ? "Sell" : "Buy"}</span><span class="pname">${p.name}</span></div>
+    <span class="dir">${isOut ? "Sell" : "Buy"}</span>
+    <span class="pname">${kitDot(p.team)}${p.name}</span>
     <span class="pmeta">${[p.team, p.pos, price].filter(Boolean).join(" · ")}</span>
     <div class="badges">${showNews ? html`<span class="pill ${a.kind}">${a.text}</span>` : ""}${priceBadge(p)}${signalBadges(p, isOut)}</div>
-    ${why ? html`<p class="why">${md(isOut ? capitalise(why) : why)}</p>` : ""}
-    ${p.team_news && safeUrl(p.team_news_source) ? html`<a class="src" href="${safeUrl(p.team_news_source)}" target="_blank" rel="noopener noreferrer">Team news source</a>` : ""}
   </div>`;
 }
 const capitalise = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+function moveWhy(m, i) {
+  const o = m.out, n = m.in;
+  const items = [];
+  if (o && m.why_out) items.push(html`<div class="why-row"><dt>Why sell ${o.name}</dt><dd>${md(capitalise(m.why_out))}</dd></div>`);
+  if (n && m.why_in) items.push(html`<div class="why-row"><dt>Why buy ${n.name}</dt><dd>${md(m.why_in)}</dd></div>`);
+  const srcs = [o, n].filter((p) => p && p.team_news && safeUrl(p.team_news_source));
+  if (!items.length && !srcs.length) return "";
+  return html`<details class="why" ${i === 0 ? "open" : ""}>
+    <summary>The reasoning</summary>
+    <dl class="why-list">${items}</dl>
+    ${srcs.map((p) => html`<a class="src" href="${safeUrl(p.team_news_source)}" target="_blank" rel="noopener noreferrer">Team news source: ${p.name}</a>`)}
+  </details>`;
+}
 
 function moves(d) {
   const tr = d.transfers;
@@ -385,17 +410,16 @@ function moves(d) {
   const hz = horizonLabel(d.horizon);
   if (tr.initial) {
     const squad = Array.isArray(tr.squad) ? tr.squad : [];
-    return html`<section class="card" aria-labelledby="moves-h">
-      <div class="sec-head"><h2 id="moves-h">Pick your squad</h2>
-        ${tr.headline ? html`<p class="lede">${md(tr.headline)}</p>` : ""}</div>
+    return html`<section class="sec sec-lead" aria-labelledby="moves-h">
+      ${secHead("moves-h", "01 · Squad", "Pick your squad", tr.headline ? html`<p class="lede">${md(tr.headline)}</p>` : "")}
       <div class="squad-groups">
         ${POS.map((pos) => {
           const ps = squad.filter((p) => p.pos === pos);
           if (!ps.length) return "";
-          return html`<div><h3>${POS_LABEL[pos]}</h3><ul class="plist">${ps.map((p) => html`<li>
-            <div class="left"><span class="pname">${p.name}</span><span class="pmeta">${p.team} · next ${p.next_fixture || "–"}</span>
+          return html`<div><h3 class="sub">${POS_LABEL[pos]}</h3><ul class="plist">${ps.map((p) => html`<li>
+            <div class="left"><span class="pname">${kitDot(p.team)}${p.name}</span><span class="pmeta">${p.team} · next ${p.next_fixture || "–"}</span>
               <div class="badges">${newsBadge(p)}${priceBadge(p)}</div></div>
-            <div class="right"><b>${money(p.price)}</b><br><span class="muted">${f1(p.xp_horizon)} xP ${hz}</span></div>
+            <div class="right"><b>${money(p.price)}</b><span class="muted">${f1(p.xp_horizon)} xP ${hz}</span></div>
           </li>`)}</ul></div>`;
         })}
       </div>
@@ -403,19 +427,19 @@ function moves(d) {
     </section>`;
   }
   const list = Array.isArray(tr.moves) ? tr.moves : [];
-  return html`<section class="card" aria-labelledby="moves-h">
-    <div class="sec-head"><h2 id="moves-h">Your moves this week</h2>
-      ${tr.headline ? html`<p class="lede">${md(tr.headline)}</p>` : ""}</div>
+  return html`<section class="sec sec-lead" aria-labelledby="moves-h">
+    ${secHead("moves-h", "01 · Transfers", "Your moves this week", tr.headline ? html`<p class="lede">${md(tr.headline)}</p>` : "")}
     ${list.length ? html`<ol class="moves">${list.map((m, i) => html`<li class="move">
       <div class="move-top">
         <span class="label">Transfer ${i + 1}</span>
-        ${isNum(m.gain) ? html`<span class="gain">${m.gain >= 0 ? "+" : ""}${f1(m.gain)} pts <small>expected, ${hz}</small></span>` : ""}
+        ${isNum(m.gain) ? html`<span class="gain"><b>${m.gain >= 0 ? "+" : "−"}${f1(Math.abs(m.gain))}</b><small>pts expected, ${hz}</small></span>` : ""}
       </div>
       <div class="swap">
         ${m.out ? sidePlayer(m.out, "out", m.why_out) : ""}
-        <div class="arrow" aria-hidden="true">→</div>
+        <div class="arrow" aria-hidden="true"></div>
         ${m.in ? sidePlayer(m.in, "in", m.why_in) : ""}
       </div>
+      ${moveWhy(m, i)}
     </li>`)}</ol>` : html`<p class="empty-line">No transfers needed this week. Roll your free transfer and you'll have more to use next week.</p>`}
     <div class="foot-notes">
       ${tr.hit_note ? html`<p class="callout">${md(tr.hit_note)}</p>` : ""}
@@ -432,7 +456,7 @@ function captain(d) {
   const capRow = (p, vice) => html`<div class="cap ${vice ? "vice" : "main"}">
     <span class="armband ${vice ? "v" : ""}" aria-hidden="true">${vice ? "V" : "C"}</span>
     <div class="info">
-      <span class="pmeta">${vice ? "Vice-captain" : mult === 3 ? "Captain (Triple Captain)" : "Captain"}</span>
+      <span class="role">${vice ? "Vice-captain" : mult === 3 ? "Captain (Triple Captain)" : "Captain"}</span>
       <span class="pname">${p.name}</span>
       <span class="pmeta">${[p.team, p.next_fixture ? `v ${p.next_fixture}` : null].filter(Boolean).join(" · ")}</span>
     </div>
@@ -441,15 +465,14 @@ function captain(d) {
       : html`<b>${f1(p.xp_next * mult)}</b><span>${f1(p.xp_next)} xP ×${mult}</span>`}</div>
   </div>`;
   const opts = Array.isArray(c.options) ? c.options : [];
-  return html`<section class="card" aria-labelledby="cap-h">
-    <div class="sec-head"><h2 id="cap-h">Captain</h2>
-      <p class="aside">Your captain scores ${mult === 3 ? "triple" : "double"} points. The vice takes over if the captain doesn't play.</p></div>
+  return html`<section class="sec" aria-labelledby="cap-h">
+    ${secHead("cap-h", "02 · Armband", "Captain", html`<p class="aside">Your captain scores ${mult === 3 ? "triple" : "double"} points. The vice takes over if the captain doesn't play.</p>`)}
     <div class="cap-pair">${capRow(c.captain, false)}${c.vice ? capRow(c.vice, true) : ""}</div>
     ${c.note ? html`<p class="note">${md(c.note)}</p>` : ""}
     ${opts.length ? html`<h3 class="sub">Top options this week</h3>
-      <ol class="plist">${opts.map((p, i) => html`<li>
-        <div class="left"><span class="pname">${i + 1}. ${p.name}</span><span class="pmeta">${p.team} · v ${p.next_fixture || "–"}</span></div>
-        <div class="right"><b>${f1(p.xp_next)}</b> <span class="muted">xP</span></div>
+      <ol class="plist ranked">${opts.map((p, i) => html`<li>
+        <div class="left"><span class="pname"><span class="rank">${i + 1}</span>${kitDot(p.team)}${p.name}</span><span class="pmeta">${p.team} · v ${p.next_fixture || "–"}</span></div>
+        <div class="right"><b>${f1(p.xp_next)}</b><span class="muted">xP</span></div>
       </li>`)}</ol>` : ""}
   </section>`;
 }
@@ -491,9 +514,9 @@ function lineup(d) {
   const opts = { capId: L.captain_id, viceId: L.vice_id };
   const bench = Array.isArray(L.bench) ? L.bench : [];
   const flagged = [...L.xi, ...bench].filter((p) => availability(p));
-  return html`<section class="card" aria-labelledby="xi-h">
-    <div class="sec-head"><h2 id="xi-h">Your starting XI</h2>
-      ${isNum(L.expected_points) ? html`<p class="aside xp-total">Expected points this week: <b>${f1(L.expected_points)}</b></p>` : ""}</div>
+  return html`<section class="sec" aria-labelledby="xi-h">
+    ${secHead("xi-h", "Team sheet", "Your starting XI",
+      isNum(L.expected_points) ? html`<p class="aside xp-total">Expected points this week <b>${f1(L.expected_points)}</b></p>` : "")}
     <div class="pitch">
       ${POS.map((pos) => {
         const row = L.xi.filter((p) => p.pos === pos);
@@ -501,7 +524,7 @@ function lineup(d) {
       })}
     </div>
     ${bench.length ? html`<div class="bench">
-      <h3>${L.bench_boost ? "Bench (Bench Boost on: these score too)" : "Bench, in order"}</h3>
+      <h3 class="sub">${L.bench_boost ? "Bench (Bench Boost on: these score too)" : "Bench, in order"}</h3>
       <ul class="prow" aria-label="Bench in order">${bench.map((p, i) => pitchChip(p, { ...opts, order: i + 1 }))}</ul>
     </div>` : ""}
     ${flagged.length ? html`<ul class="news-list" aria-label="Team news">${flagged.map((p) => {
@@ -514,15 +537,15 @@ function lineup(d) {
 function chips(d) {
   const list = Array.isArray(d.chips) ? d.chips : [];
   if (!list.length) return "";
-  return html`<section class="card" aria-labelledby="chips-h">
-    <div class="sec-head"><h2 id="chips-h">Chips</h2></div>
+  return html`<section class="sec" aria-labelledby="chips-h">
+    ${secHead("chips-h", "03 · Chips", "Chips")}
     <ul class="chips">${list.map((c) => html`<li class="chiprow ${c.play_now ? "now" : ""}">
       <div class="head">
         <span class="name">${c.name || c.chip}</span>
         ${c.play_now ? html`<span class="pill spot">Play now</span>` : html`<span class="pill">Keep</span>`}
+        ${isNum(c.expires_gw) ? html`<span class="exp">Expires after GW${c.expires_gw}</span>` : ""}
       </div>
-      ${isNum(c.expires_gw) ? html`<span class="exp">Expires after GW${c.expires_gw}</span>` : ""}
-      ${c.reason ? html`<p>${md(c.reason)}</p>` : ""}
+      ${c.reason ? html`<details class="why" ${c.play_now ? "open" : ""}><summary>${c.play_now ? "Why now" : "Why wait"}</summary><p>${md(c.reason)}</p></details>` : ""}
     </li>`)}</ul>
   </section>`;
 }
@@ -530,8 +553,8 @@ function chips(d) {
 function timing(d) {
   const list = Array.isArray(d.timing) ? d.timing.filter(Boolean) : [];
   if (!list.length) return "";
-  return html`<section class="card" aria-labelledby="timing-h">
-    <div class="sec-head"><h2 id="timing-h">When to make your moves</h2></div>
+  return html`<section class="sec" aria-labelledby="timing-h">
+    ${secHead("timing-h", "Prices", "When to make your moves")}
     <ul class="ticks">${list.map((t) => html`<li><span>${md(t)}</span></li>`)}</ul>
   </section>`;
 }
@@ -539,7 +562,7 @@ function timing(d) {
 function ownList(players, empty, partial) {
   if (!Array.isArray(players) || !players.length) return html`<p class="empty-line">${empty}</p>`;
   return html`<ul class="own-list">${players.map((p) => html`<li>
-    <div class="left"><span class="pname">${p.name}</span> <span class="pmeta">${[p.team, p.pos].filter(Boolean).join(" · ")}</span></div>
+    <div class="left"><span class="pname">${kitDot(p.team)}${p.name}</span> <span class="pmeta">${[p.team, p.pos].filter(Boolean).join(" · ")}</span></div>
     <div class="own" aria-label="Owned by ${pct(p.ownership)} of ${partial ? "the rivals we track" : "your rivals"}">
       <span class="bar" aria-hidden="true"><span style="width:${Math.round(clamp01(p.ownership) * 100)}%"></span></span>
       <span aria-hidden="true">${pct(p.ownership)}</span>
@@ -572,16 +595,13 @@ function league(d) {
   const total = isNum(L.total_managers) && L.total_managers > 0 ? L.total_managers : null;
   const partial = total != null && isNum(L.tracked) && L.tracked < total;
 
-  return html`<section class="card" aria-labelledby="league-h">
-    <div class="sec-head">
-      <p class="eyebrow">Mini-league</p>
-      <h2 id="league-h">${L.name || "Your league"}</h2>
-      ${isNum(L.rank) ? html`<p class="lede">You're <strong>${ordinal(L.rank)}</strong>${total != null ? ` of ${int(total)}` : ""}${
+  return html`<section class="sec sec-wide" aria-labelledby="league-h">
+    ${secHead("league-h", "Mini-league", L.name || "Your league",
+      isNum(L.rank) ? html`<p class="lede">You're <strong>${ordinal(L.rank)}</strong>${total != null ? ` of ${int(total)}` : ""}${
         lead ? (isNum(leadBy) ? `, ${plural(leadBy, "point", "points")} clear at the top.` : ", top of the league.")
-        : isNum(L.gap_to_leader) ? `, ${plural(L.gap_to_leader, "point", "points")} behind the leader.` : "."}</p>` : ""}
-    </div>
-    <div class="league-grid">
-      <div style="display:grid;gap:16px;align-content:start">
+        : isNum(L.gap_to_leader) ? `, ${plural(L.gap_to_leader, "point", "points")} behind the leader.` : "."}</p>` : "")}
+    <div class="grid2">
+      <div class="stack">
         ${isNum(L.target) ? html`<div class="target">
           <div class="target-head"><span>Points likely needed to win</span><b>${int(L.target)}</b></div>
           ${isNum(me) ? html`<div class="bar" role="img" aria-label="${int(me)} of ${int(L.target)} points so far"><span style="width:${Math.round(clamp01(me / L.target) * 100)}%"></span></div>
@@ -595,10 +615,10 @@ function league(d) {
             : html`<span class="pill warn">Behind pace</span> You need about ${f1(L.required_per_gw - L.my_average)} more points a week.`}</p>` : ""}
           ${L.last_season_best ? html`<p class="small muted">Best total last season among these managers: ${int(L.last_season_best.points)} (${L.last_season_best.manager}).</p>` : ""}
         </div>` : ""}
-        ${L.strategy ? html`<div><h3 class="sub" style="margin-top:0">Your strategy</h3><p class="small">${md(L.strategy)}</p></div>` : ""}
+        ${L.strategy ? html`<div><h3 class="sub first">Your strategy</h3><p class="small">${md(L.strategy)}</p></div>` : ""}
       </div>
       <div>
-        <h3 class="sub" style="margin-top:0">Standings</h3>
+        <h3 class="sub first">Standings</h3>
         <div class="table-wrap" tabindex="0" role="region" aria-label="League standings">
           <table>
             <thead><tr><th class="n" scope="col">#</th><th scope="col">Manager</th><th class="n" scope="col">GW</th><th class="n" scope="col">Total</th></tr></thead>
@@ -607,7 +627,7 @@ function league(d) {
         </div>
       </div>
     </div>
-    <div class="league-grid" style="margin-top:8px">
+    <div class="grid2">
       <div>
         <h3 class="sub">Popular with rivals, not in your team</h3>
         ${ownList(L.threats, "None of your rivals' popular picks are missing from your team.", partial)}
@@ -617,10 +637,10 @@ function league(d) {
         ${ownList(L.differentials, "No differentials in your XI this week.", partial)}
       </div>
     </div>
-    ${partial ? html`<p class="small muted" style="margin-top:8px">Ownership is shown as a share of the rivals we track (top 10 and those near you), not the whole league.</p>` : ""}
+    ${partial ? html`<p class="small muted gap-top">Ownership is shown as a share of the rivals we track (top 10 and those near you), not the whole league.</p>` : ""}
     ${rivalChips.length ? html`<h3 class="sub">Rivals' chips still to play</h3>
-      <ul class="rivals">${rivalChips.map((r) => html`<li><span class="mgr">${r.manager}</span>${
-        r.chips.length ? r.chips.map((c) => html`<span class="pill">${c}</span>`) : html`<span class="muted">none left</span>`}</li>`)}</ul>` : ""}
+      <ul class="rivals">${rivalChips.map((r) => html`<li><span class="mgr">${r.manager}</span><span class="rchips">${
+        r.chips.length ? r.chips.map((c) => html`<span class="pill">${c}</span>`) : html`<span class="muted">none left</span>`}</span></li>`)}</ul>` : ""}
   </section>`;
 }
 
@@ -628,9 +648,9 @@ function eliteRow(p, kind) {
   const val = kind === "own" ? pct(p.elite_own)
     : kind === "in" ? `+${p.elite_in ?? 0}` : `−${p.elite_out ?? 0}`;
   return html`<li>
-    <div class="left"><span class="pname">${p.name}</span> <span class="pmeta">${[p.team, p.pos, money(p.price)].filter(Boolean).join(" · ")}</span>
-      ${p.in_your_team ? html`<span class="pill good">In your team</span>` : ""}</div>
-    <div class="right"><b>${val}</b>${kind === "own" && isNum(p.elite_captain) && p.elite_captain > 0.05 ? html`<br><span class="muted">${pct(p.elite_captain)} captain</span>` : ""}</div>
+    <div class="left"><span class="pname">${kitDot(p.team)}${p.name}</span> <span class="pmeta">${[p.team, p.pos, money(p.price)].filter(Boolean).join(" · ")}</span>
+      ${p.in_your_team ? html`<span class="badges"><span class="pill good">In your team</span></span>` : ""}</div>
+    <div class="right"><b>${val}</b>${kind === "own" && isNum(p.elite_captain) && p.elite_captain > 0.05 ? html`<span class="muted">${pct(p.elite_captain)} captain</span>` : ""}</div>
   </li>`;
 }
 
@@ -639,21 +659,18 @@ function elite(d) {
   if (!E || !Array.isArray(E.most_owned) || !E.most_owned.length) return "";
   const seasons = Array.isArray(E.seasons) && E.seasons.length ? `${E.seasons[0]} to ${E.seasons[E.seasons.length - 1]}` : "the last three seasons";
   const list = (rows, kind, empty) => rows?.length ? html`<ul class="plist">${rows.map((p) => eliteRow(p, kind))}</ul>` : html`<p class="empty-line">${empty}</p>`;
-  return html`<section class="card elite-card" aria-labelledby="elite-h">
-    <div class="sec-head">
-      <p class="eyebrow">The elite</p>
-      <h2 id="elite-h">What the most consistent managers are doing</h2>
-      <p class="lede">The ${E.managers} managers with the best typical finish over ${seasons}${isNum(E.median_rank) ? html` (a typical finish of about <strong>${ordinal(Math.round(E.median_rank))}</strong> overall)` : ""}. Their teams are public only after each deadline, so this is from gameweek ${E.gameweek}.</p>
-    </div>
-    <div class="league-grid">
-      <div><h3 class="sub" style="margin-top:0">Most owned</h3>${list(E.most_owned, "own", "No data yet.")}</div>
+  return html`<section class="sec sec-wide" aria-labelledby="elite-h">
+    ${secHead("elite-h", "The elite", "What the most consistent managers are doing",
+      html`<p class="lede">The ${E.managers} managers with the best typical finish over ${seasons}${isNum(E.median_rank) ? html` (a typical finish of about <strong>${ordinal(Math.round(E.median_rank))}</strong> overall)` : ""}. Their teams are public only after each deadline, so this is from gameweek ${E.gameweek}.</p>`)}
+    <div class="grid2">
+      <div><h3 class="sub first">Most owned</h3>${list(E.most_owned, "own", "No data yet.")}</div>
       <div>
-        <h3 class="sub" style="margin-top:0">Popular with them, missing from your team</h3>${list(E.missing, "own", "You already own all their favourites.")}
+        <h3 class="sub first">Popular with them, missing from your team</h3>${list(E.missing, "own", "You already own all their favourites.")}
         <h3 class="sub">Bought last gameweek</h3>${list(E.bought, "in", "No clear buys.")}
         <h3 class="sub">Sold last gameweek</h3>${list(E.sold, "out", "No clear sales.")}
       </div>
     </div>
-    <p class="small muted" style="margin-top:12px">This shows what good managers do. It doesn't decide your moves: the advice above already weighs fixtures, form, odds and team news.</p>
+    <p class="small muted gap-top">This shows what good managers do. It doesn't decide your moves: the advice above already weighs fixtures, form, odds and team news.</p>
   </section>`;
 }
 
@@ -664,11 +681,11 @@ const refs = (xs) => (Array.isArray(xs) ? xs.filter(isRef) : []);
 
 function pchip(p, extra) {
   return html`<span class="pchip ${extra || ""}" title="${[p.name, p.team].filter(Boolean).join(", ")}">
-    <span class="dot" style="${kitStyle(p.team)}" aria-hidden="true"></span>${p.name}${p.team ? html` <span class="tm">${p.team}</span>` : ""}</span>`;
+    ${kitDot(p.team)}${p.name}${p.team ? html` <span class="tm">${p.team}</span>` : ""}</span>`;
 }
 
 function chipGroup(label, items) {
-  return items.length ? html`<div class="cgroup"><span class="clabel">${label}</span>${items}</div>` : "";
+  return items.length ? html`<div class="cgroup"><span class="clabel">${label}</span><span class="citems">${items}</span></div>` : "";
 }
 
 function shortDate(iso) {
@@ -719,33 +736,42 @@ function creatorRoom(d) {
   const n = R.creators.length;
   const enough = isNum(R.with_plan) && R.with_plan >= 2;
   const agreeList = agree.length ? html`<ul class="plist">${agree.map((a) => html`<li>
-      <div class="left"><span>${a.text}</span>${isRef(a.player) && a.player.in_your_team ? html`<span><span class="pill good">In your team</span></span>` : ""}</div>
+      <div class="left"><span>${a.text}</span>${isRef(a.player) && a.player.in_your_team ? html`<span class="badges"><span class="pill good">In your team</span></span>` : ""}</div>
       <div class="right"><b>${a.count}/${a.of}</b></div></li>`)}</ul>`
     : html`<p class="empty-line">No player has at least half of them behind it.</p>`;
   const splitList = split.length ? html`<ul class="plist">${split.map((x) => html`<li>
-      <div class="left"><span>${x.text}</span>${isRef(x.player) && x.player.in_your_team ? html`<span><span class="pill good">In your team</span></span>` : ""}</div></li>`)}</ul>`
+      <div class="left"><span>${x.text}</span>${isRef(x.player) && x.player.in_your_team ? html`<span class="badges"><span class="pill good">In your team</span></span>` : ""}</div></li>`)}</ul>`
     : html`<p class="empty-line">No clear disagreements.</p>`;
-  return html`<section class="card creators-card" aria-labelledby="creators-h">
-    <div class="sec-head">
-      <p class="eyebrow">Creator room</p>
-      <h2 id="creators-h">What the big FPL YouTubers are planning</h2>
-      <p class="lede">From each creator's latest gameweek ${R.gameweek} plan video${R.read_by_llm ? ", read from its title and description" : ""}. ${plural(isNum(R.with_video) ? R.with_video : 0, "of " + n + " has", "of " + n + " have")} posted one so far.</p>
-    </div>
-    ${R.read_by_llm && enough ? html`<div class="league-grid">
-      <div><h3 class="sub" style="margin-top:0">They agree</h3>${agreeList}</div>
-      <div><h3 class="sub" style="margin-top:0">They're split</h3>${splitList}</div>
+  return html`<section class="sec sec-wide" aria-labelledby="creators-h">
+    ${secHead("creators-h", "Creator room", "What the big FPL YouTubers are planning",
+      html`<p class="lede">From each creator's latest gameweek ${R.gameweek} plan video${R.read_by_llm ? ", read from its title and description" : ""}. ${plural(isNum(R.with_video) ? R.with_video : 0, "of " + n + " has", "of " + n + " have")} posted one so far.</p>`)}
+    ${R.read_by_llm && enough ? html`<div class="grid2">
+      <div><h3 class="sub first">They agree</h3>${agreeList}</div>
+      <div><h3 class="sub first">They're split</h3>${splitList}</div>
     </div>` : ""}
     <h3 class="sub">Creator by creator</h3>
-    <p class="small muted" style="margin-bottom:10px">Solid chips are decided moves; dashed chips are players they are still thinking about.</p>
+    <p class="small muted legend">Solid chips are decided moves; dashed chips are players they are still thinking about.</p>
     <ul class="creator-list">${R.creators.map((c) => creatorRow(c, R))}</ul>
-    <p class="small muted" style="margin-top:12px">Creators watch each other's videos, so when they agree it is closer to one shared opinion than ${n} separate votes. Plans are summarised by an AI from the video text and can be wrong or out of date: watch the video before you act. This does not change the advice above.</p>
+    <p class="small muted gap-top">Creators watch each other's videos, so when they agree it is closer to one shared opinion than ${n} separate votes. Plans are summarised by an AI from the video text and can be wrong or out of date: watch the video before you act. This does not change the advice above.</p>
   </section>`;
+}
+
+// When each outside source was last refreshed (FPL data itself is live).
+const SOURCE_LABEL = { odds: "Bookmaker odds", news: "Team news", elite: "Elite managers", creators: "Creator videos" };
+function sourcesLine(d) {
+  const s = d.sources && typeof d.sources === "object" ? d.sources : null;
+  if (!s) return "";
+  const parts = Object.keys(SOURCE_LABEL).map((k) => {
+    const t = Date.parse(s[k]);
+    return Number.isFinite(t) ? `${SOURCE_LABEL[k]} ${dateFmt.format(t)}` : null;
+  }).filter(Boolean);
+  return parts.length ? html`<p class="sources"><span class="clabel">Updated</span> FPL data live · ${parts.join(" · ")}</p>` : "";
 }
 
 function notes(d) {
   const list = Array.isArray(d.notes) ? d.notes.filter(Boolean) : [];
-  return html`<section class="card" aria-labelledby="notes-h">
-    <div class="sec-head"><h2 id="notes-h">Good to know</h2></div>
+  return html`<section class="sec sec-wide" aria-labelledby="notes-h">
+    ${secHead("notes-h", "Small print", "Good to know")}
     ${list.length ? html`<ul class="ticks">${list.map((n) => html`<li><span>${md(n)}</span></li>`)}</ul>` : ""}
     <details class="how">
       <summary>How this works</summary>
@@ -755,6 +781,7 @@ function notes(d) {
         <p>These are estimates, not promises. Football is random, so treat the advice as a strong second opinion and check team news before the deadline.</p>
       </div>
     </details>
+    ${sourcesLine(d)}
   </section>`;
 }
 
