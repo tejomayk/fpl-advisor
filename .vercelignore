@@ -1,0 +1,25 @@
+# Never uploaded to Vercel. Keys belong in the Vercel dashboard (and only BLOB_READ_WRITE_TOKEN
+# at that: the website holds no paid API keys).
+.env
+.env.*
+*.env
+fpl-advisor.toml
+.cache
+.venv
+data
+state
+public
+tests
+scripts
+docs
+.github
+.githooks
+.claude
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+Dockerfile
+docker-entrypoint.sh
+.dockerignore
+GOALS.md

@@ -100,7 +100,7 @@ docker build -t fpl-advisor .
 docker run --rm -p 8000:8000 -v fpl-data:/data fpl-advisor
 ```
 
-Then open http://localhost:8000. For a real deployment (Fly.io, Render, Railway), see [docs/deploy.md](docs/deploy.md). Run exactly one instance and keep `/data` on a persistent volume.
+Then open http://localhost:8000. For a real deployment see [docs/deploy.md](docs/deploy.md): the free, recommended path is **Vercel + GitHub Actions** (the website on Vercel, the 30-minute data refresh on GitHub Actions, shared state in Vercel Blob). For one always-on server (Fly.io, Render, Railway), run exactly one instance and keep `/data` on a persistent volume.
 
 ### Local development
 
@@ -145,6 +145,9 @@ Open http://localhost:8000. Add `/?demo=1` to see sample data without calling FP
 | `FPL_CREATORS` | unset | Change the creator list: `Handle=<FPL entry id>`, `+Handle` to add, `-Handle` to remove, comma-separated |
 | `ELITE_POOL_SIZE` | `50000` | How deep in this season's overall standings to search for consistently good managers |
 | `ELITE_MAX_RPS` | `8` | Most FPL requests per second during that search |
+| `BLOB_READ_WRITE_TOKEN` | unset | Vercel Blob token. When set, `fpl-advisor refresh`, `discover-elite` and `usage` keep their state (signal caches, elite list, spend ledger) and the website's snapshot in that private Blob store instead of `FPL_DATA_DIR`. A secret: set it in Vercel and as a GitHub Actions secret, never in a file you commit |
+| `FPL_SERVERLESS` | unset (on automatically when Vercel sets `VERCEL=1`) | Website reads the snapshot the refresh job saved, runs no background work and refuses to start if a paid API key is set |
+| `FPL_CACHE_DIR` | `.cache` | FPL response cache for `fpl-advisor refresh` and `discover-elite` |
 
 ### Keeping keys safe and costs capped
 
@@ -181,7 +184,8 @@ both the keys and the bill:
   the CLI on another machine or folder with the same keys, point `FPL_USAGE_PATH` at the same
   file, or give it its own, smaller caps.
 - **Only the scheduled refresh spends money.** Visitors' advice requests never call a paid API;
-  only the server's background refresh (every 30 minutes) and command-line runs do.
+  only the server's background refresh (every 30 minutes), the `refresh` GitHub Actions job
+  (Vercel hosting; the Vercel function holds no paid keys at all) and command-line runs do.
 - **See the spend.** `uv run fpl-advisor usage` prints each provider's spend today and this
   month against its caps, and when each resets. It is not shown on the website.
 

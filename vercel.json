@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "rm -rf public && mkdir -p public && cp -R src/fpl_advisor/static public/static && cp src/fpl_advisor/static/index.html public/index.html",
+  "regions": ["lhr1"],
+  "functions": {
+    "index.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{public/**,tests/**,docs/**,scripts/**,data/**,state/**,.cache/**,Dockerfile,.dockerignore,docker-entrypoint.sh,GOALS.md}"
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
+}

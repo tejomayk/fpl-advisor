@@ -3,12 +3,22 @@
 Run locally:  uv run fpl-advisor-web        (http://localhost:8000)
 Environment:  PORT (default 8000), FPL_DATA_DIR (default ./data) for caches, FPL_ALERTS=1 for phone alerts (off),
               FORWARDED_ALLOW_IPS (set to "*" behind a hosting proxy so visitors' real IPs are used).
+
+Two modes:
+- **Server** (default; Docker, Railway, `fpl-advisor-web`): one always-on process. A background
+  thread keeps the FPL data fresh and refreshes the paid signals every 30 minutes.
+- **Serverless** (Vercel, or FPL_SERVERLESS=1): no background work at all. Each instance reads the
+  web snapshot (world + signals) that the scheduled `fpl-advisor refresh` job saved in the store,
+  keeps it in memory for SNAPSHOT_TTL_SECONDS, and loads the world live from FPL only if the
+  snapshot is missing, older than SNAPSHOT_MAX_AGE or from before the latest deadline. It holds no
+  paid API keys (it refuses to start if one is set) and never calls a paid API.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import tempfile
 import threading
 import time
 from collections import deque
@@ -21,13 +31,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import usage
+from . import jobs, usage
+from . import store as store_mod
 from .advise import build_advice
 from .api import FPLClient, FPLError, prune_cache
 from .config import Config
 from .keys import load_dotenv, redact
 from .net import client_ip
 from .serialize import advice_to_dict
+from .signals import Signals
 from .signals_service import SignalsHub
 from .world import World, load_world
 
@@ -41,6 +53,10 @@ RATE_LIMIT = (20, 60)  # requests per IP per window (seconds) for /api/advice
 CACHE_PRUNE_SECONDS = 3600
 SIGNALS_REFRESH_SECONDS = 30 * 60
 SIGNALS_MIN_GAP_SECONDS = 5 * 60
+SNAPSHOT_TTL_SECONDS = 5 * 60  # serverless: how long a warm instance trusts its copy
+SNAPSHOT_MAX_AGE_SECONDS = 6 * 3600  # serverless: older than this, load the world live
+# API keys for paid services. The serverless web function must never hold one.
+PAID_KEY_VARS = ("ODDS_API_KEY", "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
@@ -136,6 +152,111 @@ class WorldCache:
         threading.Thread(target=warm, daemon=True).start()
 
 
+def serverless_mode(env=None) -> bool:
+    env = os.environ if env is None else env
+    return env.get("FPL_SERVERLESS", "").strip() == "1" or env.get("VERCEL") == "1"
+
+
+class SnapshotSource:
+    """Serverless: the world and signals from the refresh job's web snapshot.
+
+    Stands in for both WorldCache (`get`, `loaded`) and SignalsHub (`current`, `version`,
+    `request_refresh`). Never starts a thread and never makes a paid call: the only network
+    traffic is one store read per SNAPSHOT_TTL_SECONDS and, when the snapshot is unusable, the
+    public FPL API."""
+
+    def __init__(self, st: store_mod.Store, client: FPLClient):
+        self.store, self.client = st, client
+        self._snap: jobs.Snapshot | None = None
+        self._checked = 0.0
+        self._live: World | None = None
+        self._live_at = 0.0
+        self._failed_at = 0.0
+        self._error: Exception | None = None
+        self._lock = threading.Lock()
+
+    def _snapshot(self) -> jobs.Snapshot | None:
+        if time.time() - self._checked >= SNAPSHOT_TTL_SECONDS:
+            try:
+                snap = jobs.read_snapshot(self.store, fresh=False)
+            except Exception:
+                log.exception("Could not read the web snapshot; keeping the last one")
+                snap = None
+            if snap is not None:
+                self._snap = snap
+            self._checked = time.time()
+        return self._snap
+
+    @staticmethod
+    def _current(world: World, loaded_at: datetime, max_age: float) -> bool:
+        now = datetime.now(UTC)
+        if (now - loaded_at).total_seconds() >= max_age:
+            return False
+        ev = world.next_event
+        return ev is None or now < ev.deadline  # after a deadline the next GW changed
+
+    @property
+    def loaded(self) -> bool:
+        return self._snap is not None or self._live is not None
+
+    def get(self) -> World:
+        snap = self._snapshot()
+        if snap and self._current(snap.world, snap.saved_at, SNAPSHOT_MAX_AGE_SECONDS):
+            return snap.world
+        with self._lock:
+            live = self._live
+            if live and self._current(
+                live,
+                datetime.fromtimestamp(self._live_at, UTC),
+                WORLD_REFRESH_SECONDS,
+            ):
+                return live
+            if (
+                self._error
+                and time.time() - self._failed_at < RETRY_AFTER_FAILURE_SECONDS
+            ):
+                if snap or live:
+                    return live or snap.world  # type: ignore[union-attr]
+                raise self._error  # don't hammer FPL while it's down
+            try:
+                world = load_world(self.client)
+            except Exception as e:
+                self._error, self._failed_at = e, time.time()
+                if snap or live:  # stale beats nothing
+                    log.warning("Live FPL load failed; serving the older snapshot")
+                    return live or snap.world  # type: ignore[union-attr]
+                raise
+            self._live, self._live_at, self._error = world, time.time(), None
+            return world
+
+    def current(self) -> Signals:
+        snap = self._snapshot()
+        return snap.signals if snap else Signals()
+
+    @property
+    def version(self) -> str:
+        snap = self._snap
+        if not snap:
+            return "none"
+        return f"{snap.saved_at.isoformat()}|" + "|".join(
+            f"{k}={v}" for k, v in sorted(snap.signals.updated.items())
+        )
+
+    def request_refresh(self) -> None:
+        """Nothing to wake here: the scheduled refresh job runs every 30 minutes."""
+
+
+def _refuse_paid_keys(env=None) -> None:
+    env = os.environ if env is None else env
+    held = [k for k in PAID_KEY_VARS if (env.get(k) or "").strip()]
+    if held:
+        raise RuntimeError(
+            "The serverless web app must not hold paid API keys; remove "
+            + ", ".join(held)
+            + " from its environment (they belong to the refresh job only)."
+        )
+
+
 class AdviceCache:
     def __init__(self, max_items: int = 2000):
         self._items: dict[tuple, tuple[float, dict]] = {}
@@ -189,19 +310,35 @@ def create_app(
     client: FPLClient | None = None,
     start_background: bool = True,
     alerts: bool | None = None,
+    serverless: bool | None = None,
+    store: store_mod.Store | None = None,
 ) -> FastAPI:
     """`alerts` turns on the phone-alert sign-up routes and scheduler. They're off on the hosted
-    site for now (advice is website-only); FPL_ALERTS=1 turns them back on."""
-    load_dotenv()  # also installs key redaction for every log record
+    site for now (advice is website-only); FPL_ALERTS=1 turns them back on. `serverless` (default:
+    on under Vercel or with FPL_SERVERLESS=1) reads a stored snapshot instead of running any
+    background work; see the module docstring."""
+    if serverless is None:
+        serverless = serverless_mode()
+    if serverless:
+        _refuse_paid_keys()
+        start_background, alerts = False, False  # nothing may outlive a request
+        from .keys import install_redaction
+
+        install_redaction()  # no .env on a serverless host
+        client = client or FPLClient(Path(tempfile.gettempdir()) / "fpl-cache")
+        source = SnapshotSource(store or store_mod.default(), client)
+        worlds, hub = source, source
+    else:
+        load_dotenv()  # also installs key redaction for every log record
+        if start_background:
+            usage.warn_if_ephemeral()
+        client = client or FPLClient(data_dir() / "cache")
+        worlds = WorldCache(client)
+        hub = SignalsHub(client, data_dir())
     if alerts is None:
         alerts = os.environ.get("FPL_ALERTS", "").strip() == "1"
-    if start_background:
-        usage.warn_if_ephemeral()
-    client = client or FPLClient(data_dir() / "cache")
-    worlds = WorldCache(client)
     advice_cache = AdviceCache()
     limiter = RateLimiter(*RATE_LIMIT)
-    hub = SignalsHub(client, data_dir())
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -217,6 +354,7 @@ def create_app(
     app.state.client = client
     app.state.worlds = worlds
     app.state.signals = hub
+    app.state.serverless = serverless
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -227,7 +365,11 @@ def create_app(
 
     @app.get("/api/health")
     async def health():  # async: must answer even when every worker thread is busy
-        return {"ok": True, "world_loaded": worlds.loaded}
+        return {
+            "ok": True,
+            "world_loaded": worlds.loaded,
+            "mode": "serverless" if serverless else "server",
+        }
 
     @app.get("/api/advice")
     def advice(
