@@ -1,0 +1,68 @@
+# Monthly scan for the "elite": managers who finish near the top season after season.
+# Reads tens of thousands of public FPL entries at a polite 8 requests a second (about 2 hours),
+# then saves the list to Vercel Blob for the refresh job. No paid API is called.
+#
+# Secret: BLOB_READ_WRITE_TOKEN (skipped until set). Optional variable ELITE_POOL_SIZE.
+# Shares the `refresh` concurrency group, so refreshes wait while it runs (one writer only).
+# The scan checkpoints to Blob every 30 minutes, so a run cut off by the time limit resumes.
+name: elite
+
+on:
+  schedule:
+    - cron: "41 2 3 * *" # 02:41 UTC on the 3rd of each month
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rescan even if the saved list is recent"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Skip if not configured
+        id: gate
+        env:
+          CONFIGURED: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
+        run: |
+          if [ "$CONFIGURED" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "BLOB_READ_WRITE_TOKEN is not set; skipping. See docs/deploy.md."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Scan for leaked keys
+        if: steps.gate.outputs.run == 'true'
+        run: python3 scripts/check_secrets.py
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        run: uv sync --frozen --no-dev
+
+      - name: Find the elite managers
+        if: steps.gate.outputs.run == 'true'
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          FPL_DATA_DIR: ${{ runner.temp }}/fpl-data
+          FPL_CACHE_DIR: .cache
+          ELITE_POOL_SIZE: ${{ vars.ELITE_POOL_SIZE || '50000' }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: uv run --no-sync fpl-advisor discover-elite $FORCE

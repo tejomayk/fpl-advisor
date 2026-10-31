@@ -1,0 +1,127 @@
+# The website's data job (Vercel + GitHub Actions hosting; see docs/deploy.md).
+#
+# Every 30 minutes: load the FPL data, refresh odds, team news, elite picks and the creator room
+# with every spend cap enforced, and save the web snapshot to Vercel Blob for the website.
+# This is the only place paid API calls happen; the website itself holds no paid keys.
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   BLOB_READ_WRITE_TOKEN  required; from your Vercel Blob store. Until it is set the job is skipped.
+#   ODDS_API_KEY, OPENROUTER_API_KEY, YOUTUBE_API_KEY  optional; each turns one source on.
+#   NTFY_TOPIC             optional; spend alerts (80% / 100% of a cap) go to this ntfy topic.
+# Team news stays off: FPL_NEWS_FEEDS is deliberately not set (check a feed's terms first).
+#
+# One writer only: refresh and elite share the `refresh` concurrency group and a running job is
+# never cancelled, so the spend ledger in Blob is never written by two jobs at once.
+name: refresh
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      force_snapshot:
+        description: "Upload the web snapshot even if nothing changed"
+        type: boolean
+        default: false
+      usage_reset_confirm:
+        description: "Reset the spend ledger to zero (only after checking each provider's dashboard)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Skip if not configured
+        id: gate
+        env:
+          CONFIGURED: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
+        run: |
+          if [ "$CONFIGURED" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "BLOB_READ_WRITE_TOKEN is not set; skipping. See docs/deploy.md."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Scan for leaked keys
+        if: steps.gate.outputs.run == 'true'
+        run: python3 scripts/check_secrets.py
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.gate.outputs.run == 'true'
+
+      # The FPL response cache only (public data), so each run doesn't refetch ~700 player
+      # histories. All state that matters lives in Vercel Blob.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.gate.outputs.run == 'true'
+        with:
+          path: .cache
+          key: fpl-cache-${{ github.run_id }}
+          restore-keys: |
+            fpl-cache-
+
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        run: uv sync --frozen --no-dev
+
+      - name: Reset the spend ledger (manual, on request only)
+        if: steps.gate.outputs.run == 'true' && inputs.usage_reset_confirm
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          FPL_DATA_DIR: ${{ runner.temp }}/fpl-data
+        run: uv run --no-sync fpl-advisor usage --reset-confirm
+
+      - name: Refresh signals and the web snapshot
+        if: steps.gate.outputs.run == 'true'
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          FPL_DATA_DIR: ${{ runner.temp }}/fpl-data
+          FPL_CACHE_DIR: .cache
+          FORCE: ${{ inputs.force_snapshot && '--force-snapshot' || '' }}
+        run: uv run --no-sync fpl-advisor refresh $FORCE
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: always() && steps.gate.outputs.run == 'true'
+        with:
+          path: .cache
+          key: fpl-cache-${{ github.run_id }}
+
+  # GitHub turns scheduled workflows off after 60 days without repository activity. Re-enabling
+  # them through the API (no commits) resets that clock. Once a day is plenty.
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Keep the schedules on
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$(date -u +%H)" != "03" ] || [ "$(date -u +%M)" -ge 30 ]; then
+            echo "Not the daily slot; nothing to do."
+            exit 0
+          fi
+          for wf in refresh.yml elite.yml; do
+            gh api -X PUT "repos/$REPO/actions/workflows/$wf/enable" && echo "enabled $wf"
+          done

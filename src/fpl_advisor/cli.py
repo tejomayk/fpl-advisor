@@ -8,8 +8,8 @@ import os
 import sys
 from datetime import UTC, datetime
 
+from . import jobs, store, usage
 from . import rules as R
-from . import usage
 from .advise import Advice, build_advice, render_markdown, summary_text
 from .api import FPLClient, FPLError
 from .config import Config, ConfigError, load_config
@@ -190,14 +190,46 @@ def cmd_check(cfg: Config, args) -> int:
 
 
 def cmd_usage(args) -> int:
-    if args.reset_confirm:
-        ledger = usage.default()
-        ledger.reset()
-        print(
-            f"Usage ledger {ledger.path} reset to zero (old copies kept next to it). "
-            "Spending caps now count from nothing, so check each provider's own dashboard."
-        )
+    # With Vercel Blob the ledger lives in the store's job state: work on that copy.
+    with jobs.job_folder(store.default()) as js:
+        if args.reset_confirm:
+            ledger = usage.default()
+            ledger.reset()
+            print(
+                f"Usage ledger {ledger.path} reset to zero (old copies kept next to it). "
+                "Spending caps now count from nothing, so check each provider's own "
+                "dashboard."
+            )
+            jobs.push_job_state(js)
+        print(usage.report())
+    return 0
+
+
+def cmd_refresh(args) -> int:
+    """Refresh odds, news, elite picks and the creator room, and save the web snapshot."""
+    client = FPLClient(os.environ.get("FPL_CACHE_DIR") or ".cache")
+    r = jobs.refresh(client, force_snapshot=args.force_snapshot)
+    lines = [
+        f"Refreshed for GW{r.gameweek} using {r.store}.",
+        "Sources updated: "
+        + (", ".join(f"{k} {v}" for k, v in sorted(r.sources.items())) or "none"),
+        (
+            f"Web snapshot {'written' if r.snapshot_written else 'unchanged (not uploaded)'}; "
+            f"job state {'written' if r.state_written else 'unchanged'}."
+        ),
+    ]
+    print("\n".join(lines))
+    _write_step_summary("\n\n".join(lines))
     print(usage.report())
+    return 0
+
+
+def cmd_discover_elite(args) -> int:
+    client = FPLClient(os.environ.get("FPL_CACHE_DIR") or ".cache")
+    n = jobs.discover_elite(client, force=args.force)
+    msg = f"Elite managers saved: {n}."
+    print(msg)
+    _write_step_summary(msg)
     return 0
 
 
@@ -230,9 +262,34 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="start the spend ledger again from zero (only after checking each provider)",
     )
+    p_ref = sub.add_parser(
+        "refresh",
+        help="refresh odds, news and elite picks and save the website's snapshot "
+        "(the scheduled job; makes capped paid calls when keys are set)",
+    )
+    p_ref.add_argument(
+        "--force-snapshot",
+        action="store_true",
+        help="upload the web snapshot even if nothing material changed",
+    )
+    p_eli = sub.add_parser(
+        "discover-elite",
+        help="find the consistently good managers (slow: about 2 hours; run monthly)",
+    )
+    p_eli.add_argument(
+        "--force", action="store_true", help="rescan even if the saved list is recent"
+    )
     args = ap.parse_args(argv)
-    if args.cmd == "usage":
-        return cmd_usage(args)
+    try:
+        if args.cmd == "usage":
+            return cmd_usage(args)
+        if args.cmd == "refresh":
+            return cmd_refresh(args)
+        if args.cmd == "discover-elite":
+            return cmd_discover_elite(args)
+    except (jobs.JobError, store.StoreError, FPLError) as e:
+        print(f"error: {redact(e)}", file=sys.stderr)
+        return 2
 
     try:
         cfg = load_config(
