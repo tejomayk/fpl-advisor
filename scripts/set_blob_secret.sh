@@ -24,14 +24,35 @@ echo
 [[ -n "$vercel_token" ]] || { echo "No token given." >&2; exit 1; }
 
 # GET a Vercel API path. The access token goes to curl on stdin so it never shows in the
-# process list. Prints the body; fails on any HTTP error.
+# process list. Prints the body on success. On failure prints nothing and reports Vercel's
+# status and error message (never the token) on stderr.
 vget() {
-  printf 'Authorization: Bearer %s\n' "$vercel_token" |
-    curl -fsS --max-time 30 -H @- "$api$1" 2>/dev/null
+  local out code body
+  out="$(printf 'Authorization: Bearer %s\n' "$vercel_token" |
+    curl -sS --max-time 30 -H @- -w '\n%{http_code}' "$api$1" 2>&1)" || {
+    echo "  $1: network error" >&2
+    return 1
+  }
+  code="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  if [[ "$code" == 2* ]]; then
+    printf '%s' "$body"
+    return 0
+  fi
+  local msg
+  msg="$(printf '%s' "$body" | python3 -I -c 'import json,sys
+try:
+    e=json.load(sys.stdin).get("error") or {}
+    print(e.get("code",""), "-", e.get("message",""))
+except Exception:
+    print("(no details)")' 2>/dev/null)"
+  echo "  GET $1: HTTP $code $msg" >&2
+  return 1
 }
 
 secrets="/v1/storage/stores/${store_id}/secrets"
 body=""
+echo "Asking Vercel for the store's token..." >&2
 if [[ -n "$team_id" ]]; then
   body="$(vget "$secrets?teamId=$team_id")" || true
 else
@@ -39,15 +60,21 @@ else
   # this token can see.
   body="$(vget "$secrets")" || true
   if [[ -z "$body" ]]; then
-    teams="$(vget "/v2/teams" | python3 -I -c 'import json,sys; print(" ".join(t["id"] for t in json.load(sys.stdin).get("teams", [])))')" || teams=""
+    teams="$(vget "/v2/teams" | python3 -I -c 'import json,sys
+try:
+    print(" ".join(t["id"] for t in json.load(sys.stdin).get("teams", [])))
+except ValueError:
+    pass')" || teams=""
+    [[ -n "$teams" ]] || echo "  The token can't see any teams." >&2
     for t in $teams; do
+      echo "  trying team $t" >&2
       body="$(vget "$secrets?teamId=$t")" && break || body=""
     done
   fi
 fi
 unset vercel_token
 [[ -n "$body" ]] || {
-  echo "Vercel didn't return the store's secrets. Check the store id and that the token's scope includes the store's team." >&2
+  echo "Vercel didn't return the store's secrets (see the answers above)." >&2
   exit 1
 }
 
