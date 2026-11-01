@@ -1,17 +1,23 @@
 # The website's data job (Vercel + GitHub Actions hosting; see docs/deploy.md).
 #
 # Every 30 minutes: load the FPL data, refresh odds, team news, elite picks and the creator room
-# with every spend cap enforced, and save the web snapshot to Vercel Blob for the website.
-# This is the only place paid API calls happen; the website itself holds no paid keys.
+# with every spend cap enforced, and publish the web snapshot as the asset of the `snapshot`
+# release (a prerelease, never "Latest") for the website to read. This is the only place paid
+# API calls happen; the website itself holds no paid keys.
 #
-# Secrets (Settings -> Secrets and variables -> Actions):
-#   BLOB_READ_WRITE_TOKEN  required; from your Vercel Blob store. Until it is set the job is skipped.
-#   ODDS_API_KEY, OPENROUTER_API_KEY, YOUTUBE_API_KEY  optional; each turns one source on.
-#   NTFY_TOPIC             optional; spend alerts (80% / 100% of a cap) go to this ntfy topic.
+# Secrets (Settings -> Secrets and variables -> Actions), all optional:
+#   ODDS_API_KEY, OPENROUTER_API_KEY, YOUTUBE_API_KEY  each turns one paid source on.
+#   NTFY_TOPIC             spend alerts (80% / 100% of a cap) go to this ntfy topic.
 # Team news stays off: FPL_NEWS_FEEDS is deliberately not set (check a feed's terms first).
 #
+# Job state (signal caches, elite list, spend ledger, last snapshot) lives in `data/`, kept
+# private in the Actions cache: restored from the newest `fpl-state-*` entry, saved under a new
+# `fpl-state-<run>-<attempt>` key only if it changed and its spend ledger is sane. A run that
+# finds no state although some exists stops before spending anything.
+#
 # One writer only: refresh and elite share the `refresh` concurrency group and a running job is
-# never cancelled, so the spend ledger in Blob is never written by two jobs at once.
+# never cancelled, so the spend ledger is never written by two jobs at once. Both run only on
+# the default branch (another branch's cache would be a second, separate ledger).
 name: refresh
 
 on:
@@ -20,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       force_snapshot:
-        description: "Upload the web snapshot even if nothing changed"
+        description: "Rewrite the web snapshot even if nothing changed"
         type: boolean
         default: false
       usage_reset_confirm:
@@ -37,72 +43,180 @@ concurrency:
 
 jobs:
   refresh:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read # checkout, and read the published snapshot's digest
+      actions: read # list caches (tell a first run from a failed restore)
+    outputs:
+      publish: ${{ steps.publish.outputs.publish }}
+    env:
+      FPL_DATA_DIR: ${{ github.workspace }}/data
+      FPL_USAGE_PATH: ${{ github.workspace }}/data/usage/usage.json
+      FPL_USAGE_MIRROR: ${{ github.workspace }}/data/usage.mirror/usage.json
+      FPL_CACHE_DIR: .cache
     steps:
-      - name: Skip if not configured
-        id: gate
-        env:
-          CONFIGURED: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
-        run: |
-          if [ "$CONFIGURED" = "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "BLOB_READ_WRITE_TOKEN is not set; skipping. See docs/deploy.md."
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.run == 'true'
         with:
           persist-credentials: false
 
       - name: Scan for leaked keys
-        if: steps.gate.outputs.run == 'true'
         run: python3 scripts/check_secrets.py
 
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        if: steps.gate.outputs.run == 'true'
 
       # The FPL response cache only (public data), so each run doesn't refetch ~700 player
-      # histories. All state that matters lives in Vercel Blob.
+      # histories.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.gate.outputs.run == 'true'
         with:
           path: .cache
           key: fpl-cache-${{ github.run_id }}
           restore-keys: |
             fpl-cache-
 
+      # The job state (private): the newest saved copy.
+      - name: Restore the job state
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data
+          key: fpl-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fpl-state-
+
+      - name: Check the job state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATCHED: ${{ steps.restore.outputs.cache-matched-key }}
+        run: |
+          if [ -n "$MATCHED" ]; then
+            echo "Restored the job state from $MATCHED."
+          else
+            # Nothing restored. Either there is no saved state (first run, or it expired after 7
+            # days unused) or the restore failed. Only the first may go on: otherwise this run
+            # would spend against an empty ledger and then save it over the real one.
+            saved=$(gh cache list -R "$GITHUB_REPOSITORY" --key fpl-state- --ref "$GITHUB_REF" \
+              --limit 1 --json key --jq length)
+            if [ "$saved" != "0" ]; then
+              echo "::error::Saved job state exists but could not be restored; stopping before any paid call. The next run will retry."
+              exit 1
+            fi
+            echo "::warning::No saved job state: starting from empty. The spend ledger starts from zero (provider-side caps are the backstop; see docs/deploy.md)."
+          fi
+          {
+            echo "seq=$(python3 scripts/job_state.py seq data)"
+            echo "digest=$(python3 scripts/job_state.py digest data)"
+            echo "ok=true"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Install
-        if: steps.gate.outputs.run == 'true'
         run: uv sync --frozen --no-dev
 
       - name: Reset the spend ledger (manual, on request only)
-        if: steps.gate.outputs.run == 'true' && inputs.usage_reset_confirm
-        env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-          FPL_DATA_DIR: ${{ runner.temp }}/fpl-data
+        if: inputs.usage_reset_confirm
         run: uv run --no-sync fpl-advisor usage --reset-confirm
 
       - name: Refresh signals and the web snapshot
-        if: steps.gate.outputs.run == 'true'
         env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          FPL_DATA_DIR: ${{ runner.temp }}/fpl-data
-          FPL_CACHE_DIR: .cache
           FORCE: ${{ inputs.force_snapshot && '--force-snapshot' || '' }}
         run: uv run --no-sync fpl-advisor refresh $FORCE
 
+      # Publish only a snapshot the release doesn't already have (GitHub reports each asset's
+      # sha256). The upload itself happens in the `publish` job, the only one that can write.
+      - name: Decide whether to publish the snapshot
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=data/web/snapshot.json.gz
+          if [ ! -f "$f" ]; then
+            echo "No web snapshot was written."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mine="sha256:$(sha256sum "$f" | cut -d' ' -f1)"
+          published=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/snapshot" \
+            --jq '.assets[] | select(.name == "snapshot.json.gz") | .digest' 2>/dev/null || true)
+          if [ "$published" = "$mine" ]; then
+            echo "The published snapshot is current."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "The snapshot changed; publishing it."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.publish.outputs.publish == 'true'
+        with:
+          name: web-snapshot
+          path: data/web/snapshot.json.gz
+          retention-days: 1
+          if-no-files-found: error
+
+      # Save the job state even if a step above failed (the ledger records any spend made before
+      # the failure), but only if the state was restored properly, changed, and its ledger is
+      # readable and did not go backwards. Otherwise the last good copy stays the newest.
+      - name: Check the job state before saving
+        id: sane
+        if: always() && steps.state.outputs.ok == 'true'
+        env:
+          BEFORE: ${{ steps.state.outputs.digest }}
+          MIN_SEQ: ${{ steps.state.outputs.seq }}
+        run: |
+          python3 scripts/job_state.py check data --min-seq "$MIN_SEQ"
+          if [ "$(python3 scripts/job_state.py digest data)" = "$BEFORE" ]; then
+            echo "Job state unchanged; nothing to save."
+            echo "save=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "save=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save the job state
+        if: always() && steps.sane.outputs.save == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data
+          key: fpl-state-${{ github.run_id }}-${{ github.run_attempt }}
+
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: always() && steps.gate.outputs.run == 'true'
+        if: always()
         with:
           path: .cache
-          key: fpl-cache-${{ github.run_id }}
+          key: fpl-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
+  # Uploads the snapshot to the `snapshot` release. The only job with write access, and it runs
+  # no project code and holds no API keys.
+  publish:
+    needs: refresh
+    if: needs.refresh.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-snapshot
+          path: snapshot
+
+      - name: Upload to the snapshot release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view snapshot -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create snapshot -R "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "Website data (auto-generated)" \
+              --notes "Data file the website reads, rewritten by the refresh workflow. Not a software release."
+          fi
+          gh release upload snapshot snapshot/snapshot.json.gz -R "$GITHUB_REPOSITORY" --clobber
 
   # GitHub turns scheduled workflows off after 60 days without repository activity. Re-enabling
   # them through the API (no commits) resets that clock. Once a day is plenty.

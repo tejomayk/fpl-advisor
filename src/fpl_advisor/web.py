@@ -8,8 +8,9 @@ Two modes:
 - **Server** (default; Docker, Railway, `fpl-advisor-web`): one always-on process. A background
   thread keeps the FPL data fresh and refreshes the paid signals every 30 minutes.
 - **Serverless** (Vercel, or FPL_SERVERLESS=1): no background work at all. Each instance reads the
-  web snapshot (world + signals) that the scheduled `fpl-advisor refresh` job saved in the store,
-  keeps it in memory for SNAPSHOT_TTL_SECONDS, and loads the world live from FPL only if the
+  web snapshot (world + signals) that the scheduled `fpl-advisor refresh` job published (a GitHub
+  release asset at FPL_SNAPSHOT_URL, or derived from Vercel's repo variables; see
+  `store.web_store`), keeps it in memory for SNAPSHOT_TTL_SECONDS, and loads the world live from FPL only if the
   snapshot is missing, older than SNAPSHOT_MAX_AGE or from before the latest deadline. It holds no
   paid API keys (it refuses to start if one is set) and never calls a paid API.
 """
@@ -326,7 +327,7 @@ def create_app(
 
         install_redaction()  # no .env on a serverless host
         client = client or FPLClient(Path(tempfile.gettempdir()) / "fpl-cache")
-        source = SnapshotSource(store or store_mod.default(), client)
+        source = SnapshotSource(store or store_mod.web_store(), client)
         worlds, hub = source, source
     else:
         load_dotenv()  # also installs key redaction for every log record
@@ -358,8 +359,6 @@ def create_app(
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
-        if serverless:  # Vercel's per-request OIDC token, for reading the Blob store
-            store_mod.request_oidc_token.set(request.headers.get(store_mod.OIDC_HEADER))
         response = await call_next(request)
         for k, v in SECURITY_HEADERS.items():
             response.headers.setdefault(k, v)

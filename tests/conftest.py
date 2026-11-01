@@ -124,7 +124,15 @@ def _no_real_keys_or_paid_calls(monkeypatch, tmp_path):
     monkeypatch.setattr(keys, "DOTENV_PATH", tmp_path / "no-such.env")
     monkeypatch.setenv("FPL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("FPL_USAGE_PATH", str(tmp_path / "usage" / "usage.json"))
-    for k in ("FPL_USAGE_MIRROR", "FPL_EXPECT_VOLUME", "OPENROUTER_MODEL_PRICE"):
+    for k in (
+        "FPL_USAGE_MIRROR",
+        "FPL_EXPECT_VOLUME",
+        "OPENROUTER_MODEL_PRICE",
+        "FPL_SNAPSHOT_URL",
+        "GITHUB_ACTIONS",  # jobs.job_folder checks the ledger path when this is set
+        "VERCEL_GIT_REPO_OWNER",
+        "VERCEL_GIT_REPO_SLUG",
+    ):
         monkeypatch.delenv(k, raising=False)
     for k in (*keys.SECRET_ENV_VARS, "NTFY_TOPIC"):
         monkeypatch.delenv(k, raising=False)

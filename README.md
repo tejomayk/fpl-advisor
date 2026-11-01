@@ -100,7 +100,7 @@ docker build -t fpl-advisor .
 docker run --rm -p 8000:8000 -v fpl-data:/data fpl-advisor
 ```
 
-Then open http://localhost:8000. For a real deployment see [docs/deploy.md](docs/deploy.md): the free, recommended path is **Vercel + GitHub Actions** (the website on Vercel, the 30-minute data refresh on GitHub Actions, shared state in Vercel Blob). For one always-on server (Fly.io, Render, Railway), run exactly one instance and keep `/data` on a persistent volume.
+Then open http://localhost:8000. For a real deployment see [docs/deploy.md](docs/deploy.md): the free, recommended path is **Vercel + GitHub Actions** (the website on Vercel, the 30-minute data refresh on GitHub Actions, its state in the Actions cache and the website's data published as a GitHub release asset). For one always-on server (Fly.io, Render, Railway), run exactly one instance and keep `/data` on a persistent volume.
 
 ### Local development
 
@@ -145,8 +145,8 @@ Open http://localhost:8000. Add `/?demo=1` to see sample data without calling FP
 | `FPL_CREATORS` | unset | Change the creator list: `Handle=<FPL entry id>`, `+Handle` to add, `-Handle` to remove, comma-separated |
 | `ELITE_POOL_SIZE` | `50000` | How deep in this season's overall standings to search for consistently good managers |
 | `ELITE_MAX_RPS` | `8` | Most FPL requests per second during that search |
-| `BLOB_READ_WRITE_TOKEN` | unset | Vercel Blob token. When set, `fpl-advisor refresh`, `discover-elite` and `usage` keep their state (signal caches, elite list, spend ledger) and the website's snapshot in that private Blob store instead of `FPL_DATA_DIR`. A secret: set it as a GitHub Actions secret (`scripts/set_blob_secret.sh` fetches it), never in a file you commit. The website on Vercel doesn't need it: with `BLOB_STORE_ID` set (Vercel adds it when you connect the store) it reads Blob with Vercel's per-request OIDC token |
-| `FPL_SERVERLESS` | unset (on automatically when Vercel sets `VERCEL=1`) | Website reads the snapshot the refresh job saved, runs no background work and refuses to start if a paid API key is set |
+| `FPL_SNAPSHOT_URL` | unset | Website (serverless) only: where to download the snapshot the refresh job published. Unset on Vercel, it is built from Vercel's `VERCEL_GIT_REPO_OWNER` / `VERCEL_GIT_REPO_SLUG`: `https://github.com/<owner>/<repo>/releases/download/snapshot/snapshot.json.gz`. With neither, the site reads `FPL_DATA_DIR` or loads FPL live |
+| `FPL_SERVERLESS` | unset (on automatically when Vercel sets `VERCEL=1`) | Website reads the snapshot the refresh job published, runs no background work and refuses to start if a paid API key is set |
 | `FPL_CACHE_DIR` | `.cache` | FPL response cache for `fpl-advisor refresh` and `discover-elite` |
 
 ### Keeping keys safe and costs capped

@@ -1,10 +1,12 @@
 # Monthly scan for the "elite": managers who finish near the top season after season.
 # Reads tens of thousands of public FPL entries at a polite 8 requests a second (about 2 hours),
-# then saves the list to Vercel Blob for the refresh job. No paid API is called.
+# then saves the list in the job state (data/, kept in the Actions cache) for the refresh job.
+# No paid API is called and no secret is needed. Optional variable ELITE_POOL_SIZE.
 #
-# Secret: BLOB_READ_WRITE_TOKEN (skipped until set). Optional variable ELITE_POOL_SIZE.
-# Shares the `refresh` concurrency group, so refreshes wait while it runs (one writer only).
-# The scan checkpoints to Blob every 30 minutes, so a run cut off by the time limit resumes.
+# Shares the `refresh` concurrency group, so refreshes wait while it runs (one writer only), and
+# the same job-state cache as refresh.yml (see the comments there). The scan checkpoints to
+# data/ as it goes and the state is saved even when the scan step hits its time limit, so a run
+# that is cut off resumes next time.
 name: elite
 
 on:
@@ -26,43 +28,90 @@ concurrency:
 
 jobs:
   discover:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    permissions:
+      contents: read
+      actions: read # list caches (tell a first run from a failed restore)
+    env:
+      FPL_DATA_DIR: ${{ github.workspace }}/data
+      FPL_USAGE_PATH: ${{ github.workspace }}/data/usage/usage.json
+      FPL_USAGE_MIRROR: ${{ github.workspace }}/data/usage.mirror/usage.json
+      FPL_CACHE_DIR: .cache
     steps:
-      - name: Skip if not configured
-        id: gate
-        env:
-          CONFIGURED: ${{ secrets.BLOB_READ_WRITE_TOKEN != '' }}
-        run: |
-          if [ "$CONFIGURED" = "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "BLOB_READ_WRITE_TOKEN is not set; skipping. See docs/deploy.md."
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.run == 'true'
         with:
           persist-credentials: false
 
       - name: Scan for leaked keys
-        if: steps.gate.outputs.run == 'true'
         run: python3 scripts/check_secrets.py
 
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        if: steps.gate.outputs.run == 'true'
+
+      - name: Restore the job state
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data
+          key: fpl-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fpl-state-
+
+      - name: Check the job state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATCHED: ${{ steps.restore.outputs.cache-matched-key }}
+        run: |
+          if [ -n "$MATCHED" ]; then
+            echo "Restored the job state from $MATCHED."
+          else
+            saved=$(gh cache list -R "$GITHUB_REPOSITORY" --key fpl-state- --ref "$GITHUB_REF" \
+              --limit 1 --json key --jq length)
+            if [ "$saved" != "0" ]; then
+              echo "::error::Saved job state exists but could not be restored; stopping. The next run will retry."
+              exit 1
+            fi
+            echo "::warning::No saved job state: starting from empty."
+          fi
+          {
+            echo "seq=$(python3 scripts/job_state.py seq data)"
+            echo "digest=$(python3 scripts/job_state.py digest data)"
+            echo "ok=true"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Install
-        if: steps.gate.outputs.run == 'true'
         run: uv sync --frozen --no-dev
 
+      # Its own limit, below the job's, so the state is still saved when the scan runs long.
       - name: Find the elite managers
-        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 300
         env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-          FPL_DATA_DIR: ${{ runner.temp }}/fpl-data
-          FPL_CACHE_DIR: .cache
           ELITE_POOL_SIZE: ${{ vars.ELITE_POOL_SIZE || '50000' }}
           FORCE: ${{ inputs.force && '--force' || '' }}
         run: uv run --no-sync fpl-advisor discover-elite $FORCE
+
+      - name: Check the job state before saving
+        id: sane
+        if: always() && steps.state.outputs.ok == 'true'
+        env:
+          BEFORE: ${{ steps.state.outputs.digest }}
+          MIN_SEQ: ${{ steps.state.outputs.seq }}
+        run: |
+          python3 scripts/job_state.py check data --min-seq "$MIN_SEQ"
+          if [ "$(python3 scripts/job_state.py digest data)" = "$BEFORE" ]; then
+            echo "Job state unchanged; nothing to save."
+            echo "save=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "save=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save the job state
+        if: always() && steps.sane.outputs.save == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data
+          key: fpl-state-${{ github.run_id }}-${{ github.run_attempt }}

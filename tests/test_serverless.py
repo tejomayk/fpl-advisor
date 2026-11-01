@@ -1,8 +1,9 @@
 """The Vercel (serverless) web app and its config: reads the stored snapshot, holds no paid keys,
-makes no paid calls, routes /api/* and static paths. Fake Blob, fake FPL; no network."""
+makes no paid calls, routes /api/* and static paths. Fake HTTPS snapshot, fake FPL; no network."""
 
 from __future__ import annotations
 
+import gzip
 import importlib.util
 import json
 import urllib.request
@@ -13,7 +14,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from conftest import PAID_HOSTS, make_world, page_assets
-from fakeblob import TOKEN, FakeBlob
+from fakehttp import FakeHTTP
 from fastapi.testclient import TestClient
 from test_no_leaks import FakeFPL
 
@@ -63,12 +64,20 @@ def _site(st, fpl=None):
     return TestClient(app, raise_server_exceptions=False), app
 
 
-def _store_with_snapshot(world, signals=None, saved=None):
-    fake = FakeBlob()
-    st = store.BlobStore(TOKEN, opener=fake, sleep=lambda s: None)
+SNAP_URL = (
+    "https://github.com/example/fpl-advisor/releases/download/snapshot/snapshot.json.gz"
+)
+
+
+def _snapshot_bytes(world, signals=None, saved=None) -> bytes:
     snap = jobs.make_snapshot(world, signals or Signals(), saved or datetime.now(UTC))
-    st.put_json(store.WEB_SNAPSHOT_KEY, snap)
-    return fake, st
+    return gzip.compress(json.dumps(snap).encode(), mtime=0)
+
+
+def _store_with_snapshot(world, signals=None, saved=None):
+    """The published release asset, as the website reads it."""
+    fake = FakeHTTP({SNAP_URL: _snapshot_bytes(world, signals, saved)})
+    return fake, store.HttpSnapshotStore(SNAP_URL, opener=fake, sleep=lambda s: None)
 
 
 def test_advice_comes_from_the_stored_snapshot_with_no_paid_calls(paid_wire):
@@ -93,7 +102,7 @@ def test_advice_comes_from_the_stored_snapshot_with_no_paid_calls(paid_wire):
 def test_missing_or_stale_snapshot_falls_back_to_live_fpl(paid_wire):
     w = future_world()
     for _fake, st in (
-        (None, store.BlobStore(TOKEN, opener=FakeBlob())),  # no snapshot
+        (None, store.HttpSnapshotStore(SNAP_URL, opener=FakeHTTP())),  # none yet
         _store_with_snapshot(
             w, saved=datetime.now(UTC) - timedelta(hours=7)
         ),  # too old
@@ -236,22 +245,53 @@ def test_workflows_are_single_writer_and_pinned():
                 ref = line.split("@", 1)[1].split()[0]
                 assert len(ref) == 40, line  # pinned to a commit
         assert "echo $" not in text and "secrets." in text
-    assert '"*/30 * * * *"' in (wf / "refresh.yml").read_text()
+        # The job state (spend ledger included) persists only through the Actions cache.
+        assert "key: fpl-state-${{ github.run_id }}-${{ github.run_attempt }}" in text
+        assert "fpl-state-\n" in text  # restore the newest saved copy
+        assert "FPL_USAGE_PATH: ${{ github.workspace }}/data/usage/usage.json" in text
+        assert "scripts/job_state.py check data" in text  # saved only when sane
+        assert "BLOB" not in text
+    refresh = (wf / "refresh.yml").read_text()
+    assert '"*/30 * * * *"' in refresh
+    # Only the publish job may write to the repository, and it runs no project code.
+    jobs_part = refresh.split("\njobs:\n", 1)[1]
+    assert refresh.split("\njobs:\n")[0].count("contents: write") == 0
+    assert jobs_part.count("contents: write") == 1
+    publish = jobs_part.split("\n  publish:\n", 1)[1].split("\n  keepalive:\n")[0]
+    assert "contents: write" in publish and "secrets." not in publish
+    assert "uv run" not in publish and "checkout" not in publish
+    assert "--prerelease" in publish and "--clobber" in publish
     assert "timeout-minutes: 330" in (wf / "elite.yml").read_text()
     secrets_wf = (wf / "secrets.yml").read_text()
     assert "push:" in secrets_wf and "pull_request:" in secrets_wf
 
 
-def test_site_reads_blob_with_the_requests_oidc_token(paid_wire):
-    from fakeblob import OIDC_TOKEN, STORE_ID
+def test_site_finds_the_published_snapshot_from_the_environment(monkeypatch, paid_wire):
+    """No store passed (as on Vercel): FPL_SNAPSHOT_URL, or Vercel's repo variables, point the
+    site at the release asset; it reads that once and makes no live FPL load."""
+    fake = FakeHTTP({SNAP_URL: _snapshot_bytes(future_world())})
+    monkeypatch.setattr(store.urllib.request, "urlopen", fake)
+    monkeypatch.setenv("FPL_SNAPSHOT_URL", SNAP_URL)
+    app = web.create_app(client=CountingFPL(), serverless=True)
+    assert isinstance(app.state.worlds.store, store.HttpSnapshotStore)
+    http = TestClient(app, raise_server_exceptions=False)
+    for team in (1, 2):
+        assert http.get("/api/advice", params={"team": team}).status_code == 200
+    assert fake.reads == 1 and app.state.worlds.client.bootstraps == 0
+    assert paid_wire == []
 
-    w = future_world()
-    fake, _writer = _store_with_snapshot(w)
-    st = store.BlobStore.oidc("store_" + STORE_ID, opener=fake, sleep=lambda s: None)
+    monkeypatch.delenv("FPL_SNAPSHOT_URL")
+    monkeypatch.setenv("VERCEL_GIT_REPO_OWNER", "example")
+    monkeypatch.setenv("VERCEL_GIT_REPO_SLUG", "fpl-advisor")
+    app = web.create_app(client=CountingFPL(), serverless=True)
+    assert app.state.worlds.store.url == SNAP_URL
+
+
+def test_unreachable_snapshot_falls_back_to_live_fpl(paid_wire):
+    fake, st = _store_with_snapshot(future_world())
+    fake.fail_next = [500, 500, 500]
     http, app = _site(st)
-    r = http.get(
-        "/api/advice", params={"team": 1}, headers={store.OIDC_HEADER: OIDC_TOKEN}
-    )
-    assert r.status_code == 200, r.text
-    assert app.state.worlds.client.bootstraps == 0  # served from the stored snapshot
-    assert store.request_oidc_token.get() is None  # nothing leaks out of the request
+    r = http.get("/api/advice", params={"team": 1})
+    assert r.status_code in (200, 503)
+    assert app.state.worlds.client.bootstraps == 1  # tried FPL live instead
+    assert paid_wire == []

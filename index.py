@@ -3,7 +3,8 @@
 Vercel finds the FastAPI `app` here and sends every request that isn't a static file in
 `public/` to it, with the original path. Static files are copied into `public/` by the build
 command in vercel.json, so the CDN serves them. This function holds no paid API keys: the
-scheduled refresh job (GitHub Actions) does all paid work and saves a snapshot to Vercel Blob.
+scheduled refresh job (GitHub Actions) does all paid work and publishes a snapshot as a GitHub
+release asset, which this function reads over HTTPS.
 """
 
 from fastapi import FastAPI

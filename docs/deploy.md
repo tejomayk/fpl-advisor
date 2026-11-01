@@ -14,14 +14,21 @@ How it fits together:
 
 | Part | Where | What it does |
 |---|---|---|
-| Website | Vercel (Hobby), `index.py` + `vercel.json` | Serves the page from Vercel's CDN and `/api/advice`, `/api/health` from one Python function in Washington, D.C. (`iad1`; change `regions` in `vercel.json` to move it). Holds **no paid API keys** (it refuses to start if one is set) and never makes a paid call. |
-| Data store | Vercel Blob (private store) | `web/snapshot.json.gz` (FPL data + signals for the website) and `job/state.tar.gz` (signal caches, elite list, spend ledger). |
-| Refresh | GitHub Actions `refresh.yml`, every 30 min | `fpl-advisor refresh`: loads FPL data, refreshes odds / news / elite picks / creator room with every spend cap enforced, saves the snapshot. The **only** place paid calls happen. |
+| Website | Vercel (Hobby), `index.py` + `vercel.json` | Serves the page from Vercel's CDN and `/api/advice`, `/api/health` from one Python function in Washington, D.C. (`iad1`; change `regions` in `vercel.json` to move it). Holds **no paid API keys** (it refuses to start if one is set) and never makes a paid call. Reads the web snapshot over HTTPS; holds no token for anything. |
+| Web snapshot | GitHub release `snapshot` (a prerelease), asset `snapshot.json.gz` | FPL data + signals, exactly what the site shows. Public, like the site. Written by `refresh.yml`, read by the website. |
+| Job state | GitHub Actions cache (`fpl-state-*` entries), the `data/` folder | Signal caches, elite list, the **spend ledger** and the last snapshot. Private: caches are not downloadable by the public, even in a public repo. |
+| Refresh | GitHub Actions `refresh.yml`, every 30 min | `fpl-advisor refresh`: loads FPL data, refreshes odds / news / elite picks / creator room with every spend cap enforced, writes the snapshot, publishes it when it changed. The **only** place paid calls happen. |
 | Elite scan | GitHub Actions `elite.yml`, monthly | `fpl-advisor discover-elite`: the ~2 hour scan for consistently good managers. Free (public FPL data only). |
 
+How the website finds the snapshot: `FPL_SNAPSHOT_URL` if you set it; otherwise
+`https://github.com/<owner>/<repo>/releases/download/snapshot/snapshot.json.gz`, built from the
+`VERCEL_GIT_REPO_OWNER` and `VERCEL_GIT_REPO_SLUG` variables Vercel sets for a project imported
+from GitHub (available at build and run time while "Enable access to System Environment
+Variables" is ticked under the project's Environment Variables settings, the default). With neither, it loads FPL data live on every cold start.
+
 The website keeps each snapshot in memory for 5 minutes per warm instance. If the snapshot is
-missing, older than 6 hours, or from before the latest deadline, it loads FPL data live instead
-(about 2-3 seconds), so it keeps working when the job is late or broken.
+missing, unreachable, older than 6 hours, or from before the latest deadline, it loads FPL data
+live instead (about 2-3 seconds), so it keeps working when the job is late or broken.
 
 ### Set it up
 
@@ -29,41 +36,35 @@ missing, older than 6 hours, or from before the latest deadline, it loads FPL da
 2. **Import the repo.** Add New -> Project -> pick your fork. Vercel detects the FastAPI app in
    `index.py`; leave the build settings alone (`vercel.json` sets the build command, which copies
    `src/fpl_advisor/static/` into `public/`, the region and the function's 60 s limit). Deploy.
-3. **Create a Blob store.** Blob stores live at the account level, not inside the project:
-   open your dashboard (vercel.com/dashboard), pick the **Storage** tab in the top bar ->
-   Create -> Blob. Choose **Private** access and the same region as the function (`regions` in
-   `vercel.json`, Washington D.C. / `iad1` by default); neither can be changed later. Then open
-   the store's **Projects** tab -> Connect to Project -> pick this project, all environments.
-   Vercel adds `BLOB_STORE_ID` (and `BLOB_WEBHOOK_PUBLIC_KEY`) to the project. That is all the
-   website needs: it signs each Blob read with the short-lived OIDC token Vercel gives every
-   request, so no long-lived token sits in Vercel. Redeploy once (Deployments -> ... ->
-   Redeploy) so the function sees `BLOB_STORE_ID`. CLI alternative, from a linked checkout:
-   `vercel blob create-store fpl-advisor --access private --region iad1 --yes`.
-4. **Vercel environment variables.** Nothing else is needed. Do **not** add `ODDS_API_KEY`,
-   `OPENROUTER_API_KEY` or `YOUTUBE_API_KEY` to Vercel: they belong to the GitHub job only.
-5. **GitHub secrets** (repo -> Settings -> Secrets and variables -> Actions -> New repository
-   secret):
-   - `BLOB_READ_WRITE_TOKEN`: required; the jobs skip themselves until it is set. GitHub runs
-     outside Vercel, so it needs the store's long-lived read-write token, which the dashboard no
-     longer shows. Fetch it straight into GitHub with the script (it never prints the token):
-     create a Vercel access token with a 1-day expiry (vercel.com/account/settings/tokens), then
-     from this repo with `gh` signed in run
-     `scripts/set_blob_secret.sh <store_id>` (the store id is on the store's Settings page),
-     paste the access token when asked, and delete the access token afterwards.
-   - `ODDS_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`: optional, each turns one source on.
-   - `NTFY_TOPIC`: optional, push alerts at 80% and 100% of a spending cap.
+   No storage to create and no Vercel environment variables to add. Do **not** add
+   `ODDS_API_KEY`, `OPENROUTER_API_KEY` or `YOUTUBE_API_KEY` to Vercel: they belong to the GitHub
+   job only. Optional: `FPL_SNAPSHOT_URL` if the snapshot lives somewhere other than this repo's
+   `snapshot` release (for example the project was deployed with the CLI rather than from Git).
+3. **GitHub secrets** (repo -> Settings -> Secrets and variables -> Actions -> New repository
+   secret), all optional; the jobs run without any of them on free FPL data alone:
+   - `ODDS_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`: each turns one source on.
+   - `NTFY_TOPIC`: push alerts at 80% and 100% of a spending cap.
    - Leave `FPL_NEWS_FEEDS` unset: BBC (and other feeds') terms rarely allow a public site to
      republish them, so team news stays off.
    - Optional variable (not secret) `ELITE_POOL_SIZE` (default 50000).
-6. **Enable the workflows.** Forks start with Actions off: Actions tab -> "I understand my
-   workflows, go ahead and enable them". Check `refresh` and `elite` are listed as enabled.
-7. **First runs, by hand.** Actions -> `elite` -> Run workflow (tick "force"); it takes about 2
-   hours and holds the refresh queue while it runs. Then Actions -> `refresh` -> Run workflow
-   (tick "force_snapshot"). After that the schedule takes over.
-8. **Rate-limit rule.** Project -> Firewall -> Configure -> New Rule: "If Request Path starts with
+4. **Enable the workflows.** Forks start with Actions off: Actions tab -> "I understand my
+   workflows, go ahead and enable them". Check `refresh` and `elite` are listed as enabled. The
+   workflows ask for their own permissions (`refresh`'s publish job needs `contents: write`), so
+   the repository's default `GITHUB_TOKEN` permission can stay read-only.
+5. **First runs, by hand, from the default branch.** Actions -> `elite` -> Run workflow (tick
+   "force"); it takes about 2 hours and holds the refresh queue while it runs. Then Actions ->
+   `refresh` -> Run workflow (tick "force_snapshot"). The first refresh creates the `snapshot`
+   prerelease. After that the schedule takes over.
+6. **Rate-limit rule.** Project -> Firewall -> Configure -> New Rule: "If Request Path starts with
    `/api/advice`, Rate Limit 20 requests per 60 s per IP, then Deny". Hobby allows one rate-limit
    rule (and three custom rules); blocked requests are free. The app's own limiter (20 a minute
    per IP) only counts within one warm instance, so this rule is the real control.
+
+Moving from an older setup that used Vercel Blob: nothing reads Blob any more. Delete the
+`BLOB_READ_WRITE_TOKEN` GitHub secret, and the Blob store itself in the Vercel dashboard
+(Storage -> the store -> Settings -> Delete) once the first `refresh` run has published a
+snapshot. The old spend ledger lived in Blob, so the new one starts from zero (see "If the job
+state is lost" below).
 
 ### Check it works
 
@@ -72,24 +73,50 @@ missing, older than 6 hours, or from before the latest deadline, it loads FPL da
   `x-content-type-options: nosniff` (headers come from `vercel.json` and apply to static files too).
 - `curl "https://<your-app>.vercel.app/api/advice?team=<your team id>"` returns JSON. Its
   `sources` field lists the signals in use once the refresh job has run.
+- `curl -sIL https://github.com/<owner>/<repo>/releases/download/snapshot/snapshot.json.gz`
+  ends in `200`.
 - The `refresh` run's summary page says "Web snapshot written" (or "unchanged") and prints the
-  spend against each cap. `fpl-advisor usage` run with the Blob token set prints the same.
+  spend against each cap.
+
+### How the job state is kept
+
+- Each run restores `data/` from the newest `fpl-state-*` cache entry and, at the end, saves it
+  under a new key `fpl-state-<run id>-<attempt>`. It saves even when a step failed part-way (the
+  ledger then holds whatever that run spent), but only when the folder changed and its spend
+  ledger is readable and has not gone backwards (`scripts/job_state.py check`). A run that broke
+  the ledger therefore never replaces the last good copy.
+- If no entry is restored but one exists (a failed download), the run stops before any paid
+  call; the next run tries again. Only when no entry exists at all does a run start from empty.
+- The snapshot is uploaded only when it differs from the published asset (GitHub reports each
+  asset's sha256), by a separate `publish` job: the only job with write access, which runs no
+  project code and holds no API key.
+- Both workflows run only on the default branch: a cache saved on another branch would be a
+  second, separate ledger.
+
+### If the job state is lost
+
+GitHub deletes a cache entry not used for 7 days (the 30-minute refresh keeps it in use; pausing
+the workflows for a week loses it) and when a repository goes over 10 GB of caches. You can also
+delete entries by hand (Actions -> Caches). Then the next run starts from an empty folder: the
+signal caches refill on their own and the elite list is rebuilt by the next `elite` run (run it
+by hand to get it back sooner), but **the spend ledger restarts from zero**, so this month's and
+today's spend already made is no longer counted against the caps. The provider-side limits in the
+README (a monthly limit on the OpenRouter key, a quota on the YouTube key, The Odds API's plan
+quota) are the backstop, which is why they matter. After a loss, check each provider's dashboard.
 
 ### Costs and limits
 
 - **Cost: nothing**, inside the free allowances: Vercel Hobby's included function usage (ample
-  for a personal or mini-league site; check the Usage tab), Vercel Blob Hobby (1 GB storage,
-  10,000 reads and **2,000 uploads** a month, 10 GB transfer), and GitHub Actions (unlimited for
-  public repos; a private repo would need 1,500-3,000 of its 2,000 free minutes a month at one
-  to two minutes a run, so keep the repo public or refresh less often). Paid APIs are capped by
-  the ledger as before.
+  for a personal or mini-league site; check the Usage tab), and GitHub Actions (minutes, cache
+  and release storage are free for public repos; a private repo would need 1,500-3,000 of its
+  2,000 free minutes a month at one to two minutes a run, so keep the repo public or refresh less
+  often). Paid APIs are capped by the ledger as before.
 - **Why not Vercel Cron?** Hobby cron jobs run at most once a day, and a 30-minute refresh plus
   a 2-hour scan don't fit a 300 s function anyway. GitHub Actions does the scheduled work.
-- **Blob uploads are the tight one.** Exceeding a Hobby Blob limit blocks the store for the rest
-  of the 30 days (no bill). So the job never lists blobs, uploads the job state only when a byte
-  changed, and rewrites the snapshot only when something that matters for advice changed
-  (prices, news, fixtures, results, signals) or every 3 hours. Expect roughly 300-900 uploads a
-  month. Browsing the Blob dashboard also counts.
+- **Snapshot uploads.** The snapshot is rewritten only when something that matters for advice
+  changed (prices, news, fixtures, results, signals) or every 3 hours, and uploaded only when it
+  differs from the published one. During the few seconds of an upload (`--clobber` replaces the
+  asset) a cold start may find no snapshot and load FPL live for that instance.
 - **Non-commercial only.** Vercel Hobby is for personal, non-commercial use. Ads, paid tiers or
   running it for a business need the Pro plan.
 - **Schedules are best effort.** GitHub may start a scheduled run 5-30 minutes late (more at the
@@ -97,27 +124,26 @@ missing, older than 6 hours, or from before the latest deadline, it loads FPL da
   loads FPL live. GitHub turns schedules off after 60 days without repository activity in a
   public repo; `refresh.yml` has a `keepalive` job that re-enables both workflows once a day
   through the API (no commits).
-- **Cold starts.** A new function instance takes about 1.5 s to import plus one snapshot read;
-  the first advice for a team then takes about 1-2 s (live FPL loads add 2-3 s).
-- **Single writer.** Blob has no locks. `refresh` and `elite` share one concurrency group that
-  never cancels a running job, so only one job writes at a time; the job state is also written
-  with an ETag check, so an unexpected second writer fails loudly instead of overwriting the
-  ledger. Don't run `fpl-advisor refresh` with the Blob token on your own machine while the
-  workflows are on. While the monthly elite scan runs (about 2 hours), refreshes wait.
-- **Ledger safety.** A run that cannot read the store makes no paid call. If uploading the ledger
-  fails, the run fails and (with `NTFY_TOPIC`) alerts you; that run's spend could then be counted
-  again from the older copy at most once, which is why the provider-side limits in the README
-  still matter. To reset the ledger, run `refresh` by hand with "usage_reset_confirm" ticked
-  (only after checking each provider's dashboard).
+- **Cold starts.** A new function instance takes about 1.5 s to import plus one snapshot
+  download; the first advice for a team then takes about 1-2 s (live FPL loads add 2-3 s).
+- **Single writer.** `refresh` and `elite` share one concurrency group that never cancels a
+  running job, so only one job works on the state at a time. While the monthly elite scan runs
+  (about 2 hours), refreshes wait. A `fpl-advisor refresh` on your own machine uses your own
+  local `data/` and ledger, not the workflow's.
+- **Resetting the ledger.** Run `refresh` by hand with "usage_reset_confirm" ticked (only after
+  checking each provider's dashboard).
 - **Phone alerts** (`FPL_ALERTS`) are not available here: they need the always-on server.
 
 ### Try it locally the Vercel way
 
 ```sh
-# 1. Fill a local store (keys blank, so no paid calls; omit BLOB_READ_WRITE_TOKEN = local files)
+# 1. Write a snapshot (keys blank, so no paid calls)
 ODDS_API_KEY= OPENROUTER_API_KEY= YOUTUBE_API_KEY= FPL_DATA_DIR=/tmp/fpl-data uv run fpl-advisor refresh
-# 2. Serve it in serverless mode
+# 2a. Serve it in serverless mode from local files ...
 FPL_SERVERLESS=1 FPL_DATA_DIR=/tmp/fpl-data uv run uvicorn --app-dir . index:app --port 8000
+# 2b. ... or over HTTP, as on Vercel
+python3 -m http.server 8001 --directory /tmp/fpl-data/web &
+FPL_SERVERLESS=1 FPL_SNAPSHOT_URL=http://localhost:8001/snapshot.json.gz uv run uvicorn --app-dir . index:app --port 8000
 curl "localhost:8000/api/advice?team=<team id>"
 ```
 

@@ -1,5 +1,5 @@
-# Never uploaded to Vercel. Keys belong in the Vercel dashboard (and only BLOB_READ_WRITE_TOKEN
-# at that: the website holds no paid API keys).
+# Never uploaded to Vercel. The website needs no keys at all: paid API keys belong to the GitHub
+# Actions job only.
 .env
 .env.*
 *.env

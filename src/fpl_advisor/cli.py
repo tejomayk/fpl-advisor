@@ -190,18 +190,15 @@ def cmd_check(cfg: Config, args) -> int:
 
 
 def cmd_usage(args) -> int:
-    # With Vercel Blob the ledger lives in the store's job state: work on that copy.
-    with jobs.job_folder(store.default()) as js:
-        if args.reset_confirm:
-            ledger = usage.default()
-            ledger.reset()
-            print(
-                f"Usage ledger {ledger.path} reset to zero (old copies kept next to it). "
-                "Spending caps now count from nothing, so check each provider's own "
-                "dashboard."
-            )
-            jobs.push_job_state(js)
-        print(usage.report())
+    if args.reset_confirm:
+        ledger = usage.default()
+        ledger.reset()
+        print(
+            f"Usage ledger {ledger.path} reset to zero (old copies kept next to it). "
+            "Spending caps now count from nothing, so check each provider's own "
+            "dashboard."
+        )
+    print(usage.report())
     return 0
 
 
@@ -213,10 +210,7 @@ def cmd_refresh(args) -> int:
         f"Refreshed for GW{r.gameweek} using {r.store}.",
         "Sources updated: "
         + (", ".join(f"{k} {v}" for k, v in sorted(r.sources.items())) or "none"),
-        (
-            f"Web snapshot {'written' if r.snapshot_written else 'unchanged (not uploaded)'}; "
-            f"job state {'written' if r.state_written else 'unchanged'}."
-        ),
+        f"Web snapshot {'written' if r.snapshot_written else 'unchanged'}.",
     ]
     print("\n".join(lines))
     _write_step_summary("\n\n".join(lines))
@@ -270,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     p_ref.add_argument(
         "--force-snapshot",
         action="store_true",
-        help="upload the web snapshot even if nothing material changed",
+        help="rewrite the web snapshot even if nothing material changed",
     )
     p_eli = sub.add_parser(
         "discover-elite",

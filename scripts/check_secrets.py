@@ -41,8 +41,6 @@ SECRET_ENV_VARS = (
     "OPENROUTER_API_KEY",
     "YOUTUBE_API_KEY",
     "NTFY_TOKEN",
-    "BLOB_READ_WRITE_TOKEN",
-    "VERCEL_OIDC_TOKEN",
 )
 # Not an API key, but it works like a password and must never be committed either.
 ALSO_PRIVATE = ("NTFY_TOPIC",)

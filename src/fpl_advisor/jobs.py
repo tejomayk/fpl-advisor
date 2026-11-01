@@ -6,10 +6,10 @@
 - `discover_elite`: the monthly scan for consistently good managers (tens of thousands of public
   FPL requests, about 2 hours). `fpl-advisor discover-elite`, from .github/workflows/elite.yml.
 
-Both work in the store's job folder (see store.py): with a LocalStore (no Blob token) that is
-FPL_DATA_DIR itself, exactly as the always-on server uses it; with Blob it is a copy of
-`job/state.tar.gz`. Only these jobs write to Blob and only one runs at a time (GitHub Actions
-concurrency group), so the spend ledger has a single writer.
+Both work in FPL_DATA_DIR (a LocalStore), exactly as the always-on server uses it. In GitHub
+Actions that folder, spend ledger included, is kept private in the Actions cache between runs,
+and only one job runs at a time (one concurrency group), so the ledger has a single writer. The
+refresh workflow then publishes `web/snapshot.json.gz` as a GitHub release asset for the website.
 
 The website never runs these: visitors still cannot cause a paid call.
 """
@@ -20,9 +20,6 @@ import hashlib
 import json
 import logging
 import os
-import signal
-import threading
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -36,7 +33,7 @@ log = logging.getLogger("fpl_advisor.jobs")
 
 SNAPSHOT_VERSION = 1
 # Rewrite the web snapshot at least this often even if nothing material changed (prices'
-# transfer counts drift all day). Uploads are scarce on Blob's free plan (2,000 a month).
+# transfer counts drift all day). Each new snapshot is one release-asset upload.
 SNAPSHOT_MAX_AGE = timedelta(hours=3)
 # Player fields that change constantly and alone don't justify a new snapshot.
 VOLATILE_PLAYER_FIELDS = (
@@ -45,7 +42,6 @@ VOLATILE_PLAYER_FIELDS = (
     "selected_by",
     "price_projection",
 )
-DISCOVERY_PUSH_SECONDS = 30 * 60  # save the elite scan's checkpoint this often
 
 
 class JobError(RuntimeError):
@@ -128,47 +124,26 @@ def snapshot_due(prev: dict | None, new: dict, now: datetime) -> bool:
 # ---------------------------------------------------------------- the job folder
 
 
-def _use_job_ledger(js: store.JobState) -> None:
-    """With Blob, the spend ledger must be the one inside the job folder (the copy that is
-    uploaded again), whatever FPL_USAGE_PATH says."""
-    if not js.remote:
-        return
-    path = js.root / "usage" / "usage.json"
-    mirror = js.root / "usage.mirror" / "usage.json"
-    for var, want in (("FPL_USAGE_PATH", path), ("FPL_USAGE_MIRROR", mirror)):
-        if os.environ.get(var) and Path(os.environ[var]) != want:
-            log.warning(
-                "%s is ignored with Vercel Blob: the ledger lives in the store", var
-            )
-        os.environ[var] = str(want)
+def job_folder(st: store.Store) -> Path:
+    """The folder the signal sources and the spend ledger work in: the LocalStore's root.
 
-
-@contextmanager
-def job_folder(st: store.Store, workdir: Path | str | None = None):
-    """The job folder, filled from the store, with the ledger pointed at it. Refuses to start
-    (JobError) if the store can't be read: a run that can't see the ledger must not spend."""
-    with store.job_state(st, workdir) as js:
-        try:
-            js.pull()
-        except store.StoreError as e:
-            raise JobError(f"could not read the job state from the store: {e}") from e
-        _use_job_ledger(js)
-        yield js
-
-
-def push_job_state(js: store.JobState) -> None:
-    try:
-        if js.push():
-            log.info("job state uploaded")
-    except store.StoreError as e:
-        # The ledger copy that counts spend from this run did not reach the store. Say so
-        # loudly: the next run would otherwise start from the older copy.
-        usage.owner_alert(
-            "FPL advisor: spend ledger upload failed",
-            "The refresh job could not save its spend ledger to Vercel Blob. Check the "
-            "GitHub Actions log and each provider's dashboard.",
-        )
-        raise JobError(f"could not save the job state to the store: {e}") from e
+    Refuses (JobError) a store the job can't write to, and, in GitHub Actions, a spend ledger
+    outside that folder: only the folder is saved between runs, so a ledger elsewhere would
+    start from zero every run and the spending caps would not hold."""
+    if not isinstance(st, store.LocalStore):
+        raise JobError(f"the scheduled jobs need a local data folder, not {st!r}")
+    root = st.root.absolute()
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        ledger = usage.ledger_path()
+        mirror = usage.mirror_path(ledger)
+        for p in (ledger, mirror):
+            if not p.is_relative_to(root):
+                raise JobError(
+                    "the spend ledger must live inside FPL_DATA_DIR in GitHub Actions "
+                    "(set FPL_USAGE_PATH and FPL_USAGE_MIRROR under it), or it is lost "
+                    "after every run"
+                )
+    return st.root
 
 
 # ---------------------------------------------------------------- refresh
@@ -179,7 +154,6 @@ class RefreshResult:
     gameweek: int | None
     sources: dict[str, str]
     snapshot_written: bool
-    state_written: bool
     store: str
 
 
@@ -187,19 +161,13 @@ def refresh(
     client,
     st: store.Store | None = None,
     now: datetime | None = None,
-    workdir: Path | str | None = None,
     force_snapshot: bool = False,
 ) -> RefreshResult:
     st = st or store.default()
     now = now or datetime.now(UTC)
-    with job_folder(st, workdir) as js:
-        world = load_world(client)  # no paid call happens before this succeeds
-        hub = SignalsHub(client, js.root)
-        try:
-            signals = hub.refresh(world, now=now, discover=False)
-        finally:
-            push_job_state(js)  # the ledger first, even if a source blew up
-        state_written = bool(js.pushed)
+    root = job_folder(st)
+    world = load_world(client)  # no paid call happens before this succeeds
+    signals = SignalsHub(client, root).refresh(world, now=now, discover=False)
 
     snap = make_snapshot(world, signals, now)
     try:
@@ -214,7 +182,6 @@ def refresh(
         gameweek=snap["gameweek"],
         sources=dict(signals.updated),
         snapshot_written=written,
-        state_written=state_written,
         store=repr(st),
     )
 
@@ -222,52 +189,19 @@ def refresh(
 # ---------------------------------------------------------------- elite discovery
 
 
-def discover_elite(
-    client,
-    st: store.Store | None = None,
-    workdir: Path | str | None = None,
-    force: bool = False,
-    push_every: float = DISCOVERY_PUSH_SECONDS,
-) -> int:
+def discover_elite(client, st: store.Store | None = None, force: bool = False) -> int:
     """Find the elite managers (monthly). Returns how many are saved.
 
-    The scan checkpoints as it goes; the checkpoint is uploaded every `push_every` seconds and
-    on exit (also on SIGTERM), so a run that hits the job time limit resumes next time."""
+    The scan checkpoints to the job folder as it goes, and the workflow saves that folder even
+    when a run is cut off by its time limit, so the next run resumes."""
     st = st or store.default()
-    with job_folder(st, workdir) as js:
-        path = js.root / "signals" / "elite_managers.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        lock = threading.Lock()
-        stop = threading.Event()
-
-        def push_now():
-            with lock:
-                push_job_state(js)
-
-        def pusher():
-            while not stop.wait(push_every):
-                try:
-                    push_now()
-                except JobError:
-                    log.exception("checkpoint upload failed; will try again")
-
-        def on_term(signum, _frame):
-            raise SystemExit(128 + signum)
-
-        old = signal.signal(signal.SIGTERM, on_term)
-        t = threading.Thread(target=pusher, daemon=True, name="elite-push")
-        if js.remote:
-            t.start()
-        try:
-            managers = elite.load_or_discover(
-                client,
-                path,
-                max_age_days=0 if force else ELITE_REDISCOVER_DAYS,
-                pool_size=int(os.environ.get("ELITE_POOL_SIZE", "50000")),
-                top=ELITE_TOP,
-            )
-        finally:
-            stop.set()
-            signal.signal(signal.SIGTERM, old)
-            push_now()
-        return len(managers)
+    path = job_folder(st) / "signals" / "elite_managers.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    managers = elite.load_or_discover(
+        client,
+        path,
+        max_age_days=0 if force else ELITE_REDISCOVER_DAYS,
+        pool_size=int(os.environ.get("ELITE_POOL_SIZE", "50000")),
+        top=ELITE_TOP,
+    )
+    return len(managers)

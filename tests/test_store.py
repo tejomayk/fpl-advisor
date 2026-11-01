@@ -1,218 +1,152 @@
-"""The storage layer: local files and Vercel Blob (faked over HTTP; no network)."""
+"""The storage layer: local files, and the read-only HTTPS copy of the web snapshot (faked; no
+network)."""
 
 from __future__ import annotations
 
-import logging
+import gzip
+import json
+import urllib.error
 
 import pytest
-from fakeblob import OIDC_TOKEN, STORE_ID, TOKEN, FakeBlob
+from fakehttp import FakeHTTP
 
-from fpl_advisor import keys, store
+from fpl_advisor import store
+
+URL = (
+    "https://github.com/example/fpl-advisor/releases/download/snapshot/snapshot.json.gz"
+)
 
 
 @pytest.fixture
-def blob():
-    fake = FakeBlob()
-    return fake, store.BlobStore(TOKEN, opener=fake, sleep=lambda s: None)
+def local(tmp_path):
+    return store.LocalStore(tmp_path / "data")
 
 
-@pytest.fixture(params=["local", "blob", "blob-oidc"])
-def any_store(request, tmp_path):
-    if request.param == "local":
-        return store.LocalStore(tmp_path / "data")
-    fake = FakeBlob()
-    if request.param == "blob-oidc":
-        return store.BlobStore.oidc(
-            "store_" + STORE_ID, lambda: OIDC_TOKEN, opener=fake, sleep=lambda s: None
-        )
-    return store.BlobStore(TOKEN, opener=fake, sleep=lambda s: None)
+def test_round_trip_bytes_and_json(local):
+    assert local.get("a/b.json") is None
+    local.put("a/b.bin", b"\x00\x01")
+    assert local.get("a/b.bin") == b"\x00\x01"
+    local.put_json("a/b.json", {"x": 1})
+    assert local.get_json("a/b.json") == {"x": 1}
+    local.put_json("big.json.gz", {"y": [1, 2, 3]})
+    assert local.get_json("big.json.gz") == {"y": [1, 2, 3]}
+    local.put("a/b.bin", b"new")  # overwrite
+    assert local.get("a/b.bin") == b"new"
+    local.delete("a/b.bin")
+    assert local.get("a/b.bin") is None
 
 
-def test_round_trip_bytes_and_json(any_store):
-    assert any_store.get("a/b.json") is None
-    any_store.put("a/b.bin", b"\x00\x01")
-    assert any_store.get("a/b.bin") == b"\x00\x01"
-    any_store.put_json("a/b.json", {"x": 1})
-    assert any_store.get_json("a/b.json") == {"x": 1}
-    any_store.put_json("big.json.gz", {"y": [1, 2, 3]})
-    assert any_store.get_json("big.json.gz") == {"y": [1, 2, 3]}
-    any_store.put("a/b.bin", b"new")  # overwrite
-    assert any_store.get("a/b.bin") == b"new"
-    any_store.delete("a/b.bin")
-    assert any_store.get("a/b.bin") is None
+def test_gzipped_json_is_deterministic(local):
+    local.put_json("x.json.gz", {"a": 1})
+    one = local.get("x.json.gz")
+    local.put_json("x.json.gz", {"a": 1})
+    assert local.get("x.json.gz") == one  # no timestamp inside: same JSON, same bytes
 
 
-def test_if_match_refuses_a_changed_copy(any_store):
-    any_store.put("k.json", b"1")
-    first = any_store.read("k.json")
-    any_store.put("k.json", b"2")  # someone else wrote meanwhile
+def test_if_match_refuses_a_changed_copy(local):
+    local.put("k.json", b"1")
+    first = local.read("k.json")
+    local.put("k.json", b"2")  # someone else wrote meanwhile
     with pytest.raises(store.ConflictError):
-        any_store.put("k.json", b"3", if_match=first.etag)
-    assert any_store.get("k.json") == b"2"
-    current = any_store.read("k.json")
-    any_store.put("k.json", b"4", if_match=current.etag)
-    assert any_store.get("k.json") == b"4"
+        local.put("k.json", b"3", if_match=first.etag)
+    assert local.get("k.json") == b"2"
+    current = local.read("k.json")
+    local.put("k.json", b"4", if_match=current.etag)
+    assert local.get("k.json") == b"4"
 
 
 @pytest.mark.parametrize("key", ["", "/abs", "../up", "a/../b", "a//b"])
-def test_bad_keys_are_refused(any_store, key):
+def test_bad_keys_are_refused(local, key):
     with pytest.raises(ValueError):
-        any_store.get(key)
+        local.get(key)
+    with pytest.raises(ValueError):
+        store.HttpSnapshotStore(URL, opener=FakeHTTP()).get(key)
 
 
-def test_default_picks_blob_only_with_a_token(tmp_path):
-    assert isinstance(store.default({"FPL_DATA_DIR": str(tmp_path)}), store.LocalStore)
-    st = store.default({"BLOB_READ_WRITE_TOKEN": TOKEN})
-    assert isinstance(st, store.BlobStore) and st.store_id == STORE_ID
+# ------------------------------------------------------------------ the HTTPS snapshot
 
 
-def test_blob_writes_are_private_and_never_random(blob):
-    fake, st = blob
-    st.put_json("signals/x.json", {"a": 1})
-    req = fake.requests[-1]
-    h = {k.lower(): v for k, v in req.header_items()}
-    assert h["x-vercel-blob-access"] == "private"
-    assert h["x-add-random-suffix"] == "0" and h["x-allow-overwrite"] == "1"
-    assert "signals%2Fx.json" in req.full_url or "signals/x.json" in req.full_url
+def _http(files=None):
+    fake = FakeHTTP(files)
+    return fake, store.HttpSnapshotStore(URL, opener=fake, sleep=lambda s: None)
 
 
-def test_blob_reads_go_to_the_private_host_with_the_token(blob):
-    fake, st = blob
-    st.put("a.json", b"{}")
-    st.get("a.json")
-    req = fake.requests[-1]
-    assert req.full_url.startswith(
-        f"https://{STORE_ID}.private.blob.vercel-storage.com/"
-    )
-    assert req.full_url.endswith("?cache=0")  # fresh by default
-    st.get("a.json", fresh=False)
-    assert "cache=0" not in fake.requests[-1].full_url
+def test_http_store_reads_the_snapshot(tmp_path):
+    body = gzip.compress(json.dumps({"v": 1}).encode(), mtime=0)
+    fake, st = _http({URL: body})
+    assert st.get_json(store.WEB_SNAPSHOT_KEY, fresh=False) == {"v": 1}
+    assert fake.requests[0].full_url == URL
+    assert st.get("signals/other.json") is None  # it holds the snapshot only
+    assert fake.reads == 1
 
 
-def test_blob_errors_never_show_the_token(blob, caplog):
-    fake, st = blob
+def test_http_store_missing_snapshot_is_none():
+    _fake, st = _http()
+    assert st.get(store.WEB_SNAPSHOT_KEY) is None
+
+
+def test_http_store_retries_transient_errors_then_fails_without_the_url():
+    fake, st = _http({URL: b"x"})
+    fake.fail_next = [502, urllib.error.URLError("down")]
+    assert st.get(store.WEB_SNAPSHOT_KEY) == b"x"
+    assert fake.reads == 3
     fake.fail_next = [500, 500, 500]
-    with caplog.at_level(logging.DEBUG), pytest.raises(store.StoreError) as e:
-        st.get("a.json")
-    assert TOKEN not in str(e.value) and "s3cr3t" not in str(e.value)
-    assert "HTTP 500" in str(e.value)
-    assert TOKEN not in repr(st)
-    assert keys.redact(f"oops {TOKEN}") == "oops ***"
+    with pytest.raises(store.StoreError) as e:
+        st.get(store.WEB_SNAPSHOT_KEY)
+    assert "HTTP 500" in str(e.value) and "github.com" not in str(e.value)
 
 
-def test_blob_retries_transient_errors(blob):
-    fake, st = blob
-    st.put("a.json", b"1")
-    fake.fail_next = [502]
-    assert st.get("a.json") == b"1"
-
-
-def test_blob_auth_errors_are_not_retried(blob):
-    fake, st = blob
-    fake.fail_next = [401, 401, 401]
+def test_http_store_does_not_retry_refusals():
+    fake, st = _http({URL: b"x"})
+    fake.fail_next = [403, 403, 403]
     with pytest.raises(store.StoreError):
-        st.get("a.json")
+        st.get(store.WEB_SNAPSHOT_KEY)
     assert len(fake.fail_next) == 2
 
 
-def test_bad_token_shape_is_refused():
-    with pytest.raises(store.StoreError) as e:
-        store.BlobStore("not-a-token")
-    assert "not-a-token" not in str(e.value)
-
-
-def test_pack_is_deterministic_and_round_trips(tmp_path):
-    root = tmp_path / "a"
-    (root / "signals" / "odds").mkdir(parents=True)
-    (root / "signals" / "odds" / "x.json").write_text("1")
-    (root / "usage").mkdir()
-    (root / "usage" / "usage.json").write_text("{}")
-    (root / "usage" / "usage.json.lock").write_text("")
-    (root / "other").mkdir()
-    (root / "other" / "skip.txt").write_text("no")
-    one, two = store.pack(root), store.pack(root)
-    assert one == two
-    out = tmp_path / "b"
-    store.unpack(one, out)
-    assert (out / "signals" / "odds" / "x.json").read_text() == "1"
-    assert (out / "usage" / "usage.json.lock").exists()
-    assert not (out / "other").exists()
-
-
-def test_job_state_pushes_only_when_something_changed(blob, tmp_path):
-    fake, st = blob
-    with store.job_state(st, tmp_path / "w1") as js:
-        js.pull()  # nothing there yet
-        (js.root / "signals").mkdir()
-        (js.root / "signals" / "signals.json").write_text("{}")
-        assert js.push() is True
-    with store.job_state(st, tmp_path / "w2") as js:
-        js.pull()
-        assert (js.root / "signals" / "signals.json").read_text() == "{}"
-        puts = fake.uploads
-        assert js.push() is False  # unchanged: no upload spent
-        assert fake.uploads == puts
-        (js.root / "signals" / "signals.json").write_text('{"a":1}')
-        assert js.push() is True
-
-
-def test_job_state_never_overwrites_a_newer_copy(blob, tmp_path):
-    _fake, st = blob
-    with store.job_state(st, tmp_path / "w0") as js:
-        (js.root / "usage").mkdir()
-        (js.root / "usage" / "usage.json").write_text("0")
-        js.push()
-    with store.job_state(st, tmp_path / "w1") as a:
-        a.pull()
-        with store.job_state(st, tmp_path / "w2") as b:
-            b.pull()
-            (b.root / "usage" / "usage.json").write_text("b")
-            b.push()
-        (a.root / "usage" / "usage.json").write_text("a")
-        with pytest.raises(store.ConflictError):
-            a.push()
-
-
-def test_local_job_state_is_used_in_place(tmp_path):
-    st = store.LocalStore(tmp_path)
-    with store.job_state(st) as js:
-        js.pull()
-        assert js.root == tmp_path and not js.remote and js.push() is False
-
-
-def test_default_uses_oidc_when_vercel_connected_the_store(monkeypatch):
-    st = store.default({"BLOB_STORE_ID": "store_" + STORE_ID.upper()})
-    assert isinstance(st, store.BlobStore) and st.store_id == STORE_ID
-    assert st.host == f"https://{STORE_ID}.private.blob.vercel-storage.com"
-    # a read-write token, when present, wins
-    assert (
-        store.default(
-            {"BLOB_STORE_ID": "store_x", "BLOB_READ_WRITE_TOKEN": TOKEN}
-        ).store_id
-        == STORE_ID
-    )
-
-
-def test_oidc_token_comes_from_the_request_then_the_env(monkeypatch):
-    fake = FakeBlob()
-    st = store.BlobStore.oidc(STORE_ID, opener=fake, sleep=lambda s: None)
-    monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
-    with pytest.raises(store.StoreError, match="no OIDC token"):
-        st.get("web/x.json")
-    assert fake.requests == []  # nothing sent without a token
-    tok = store.request_oidc_token.set(OIDC_TOKEN)
-    try:
-        st.put("web/x.json", b"1")
-        assert st.get("web/x.json") == b"1"
-    finally:
-        store.request_oidc_token.reset(tok)
-    monkeypatch.setenv("VERCEL_OIDC_TOKEN", OIDC_TOKEN)
-    assert st.get("web/x.json") == b"1"
-    sent = {k.lower(): v for k, v in fake.requests[0].header_items()}
-    assert sent["x-vercel-blob-store-id"] == STORE_ID
-    assert OIDC_TOKEN not in repr(st)
-
-
-def test_bad_store_id_is_refused():
+def test_http_store_is_read_only():
+    fake, st = _http()
+    for write in (
+        lambda: st.put(store.WEB_SNAPSHOT_KEY, b"x"),
+        lambda: st.put_json(store.WEB_SNAPSHOT_KEY, {}),
+        lambda: st.delete(store.WEB_SNAPSHOT_KEY),
+    ):
+        with pytest.raises(store.StoreError):
+            write()
+    assert fake.requests == []
     with pytest.raises(store.StoreError):
-        store.BlobStore.oidc("store_../evil")
+        store.HttpSnapshotStore("file:///etc/passwd")
+
+
+# ------------------------------------------------------------------ choosing one
+
+
+def test_default_is_local_files(tmp_path):
+    st = store.default({"FPL_DATA_DIR": str(tmp_path)})
+    assert isinstance(st, store.LocalStore) and st.root == tmp_path
+    assert store.default({}).root.name == "data"
+
+
+def test_snapshot_url_from_env_or_vercel_repo_vars():
+    vercel = {
+        "VERCEL_GIT_PROVIDER": "github",
+        "VERCEL_GIT_REPO_OWNER": "someone",
+        "VERCEL_GIT_REPO_SLUG": "fpl-advisor",
+    }
+    assert store.snapshot_url(vercel) == (
+        "https://github.com/someone/fpl-advisor/releases/download/snapshot/"
+        "snapshot.json.gz"
+    )
+    # an explicit URL wins
+    assert store.snapshot_url({**vercel, "FPL_SNAPSHOT_URL": URL}) == URL
+    # not GitHub, odd names or nothing at all: no URL
+    assert store.snapshot_url({**vercel, "VERCEL_GIT_PROVIDER": "gitlab"}) is None
+    assert store.snapshot_url({**vercel, "VERCEL_GIT_REPO_SLUG": "a/../b"}) is None
+    assert store.snapshot_url({}) is None
+
+
+def test_web_store_reads_https_when_a_url_is_known(tmp_path):
+    st = store.web_store({"FPL_SNAPSHOT_URL": URL})
+    assert isinstance(st, store.HttpSnapshotStore) and st.url == URL
+    local = store.web_store({"FPL_DATA_DIR": str(tmp_path)})
+    assert isinstance(local, store.LocalStore) and local.root == tmp_path
