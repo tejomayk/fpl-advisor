@@ -98,6 +98,14 @@ function Landing({
           <br />
           <span className="text-fg-2">before kick-off.</span>
         </m.h1>
+        <m.p
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 180, damping: 26, delay: 0.04 }}
+          className="mt-4 text-[17px] leading-snug text-fg-2"
+        >
+          Transfer, captain and chip advice for your Fantasy Premier League team.
+        </m.p>
         <m.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -214,7 +222,12 @@ function TopBar({
         </button>
         <TabBar items={views} value={view} onChange={setView} className="hidden md:flex" />
         <div className="flex items-baseline gap-2 justify-self-end text-[15px]">
-          {d?.gameweek?.id != null && <span className="hidden text-fg-3 sm:inline">GW{d.gameweek.id}</span>}
+          {d?.gameweek?.deadline && (
+            <span className="text-[13px] text-fg-3 sm:text-[15px]">
+              {d?.gameweek?.id != null ? <span className="hidden sm:inline">GW{d.gameweek.id} deadline</span> : null}
+              <span className={d?.gameweek?.id != null ? "sm:hidden" : ""}>Deadline</span>
+            </span>
+          )}
           <Deadline iso={d?.gameweek?.deadline} className="font-semibold" />
         </div>
       </div>

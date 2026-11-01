@@ -1,11 +1,11 @@
 import { m } from "motion/react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { CountUp } from "../components/CountUp";
 import { Md } from "../components/Md";
 import { useSheet } from "../components/Sheet";
 import { Segmented } from "../components/Tabs";
 import { Token } from "../components/Token";
-import { Chevron, item, list, Meter, Prose, RowButton, Section } from "../components/ui";
+import { Chevron, item, Legend, list, Meter, Prose, RowButton, Section } from "../components/ui";
 import { CHIP_SHORT, clamp01, f1, int, isNum, ordinal, pct } from "../lib/format";
 import type { Advice, League as LeagueT, Player } from "../lib/types";
 import { playerSheet } from "../sheets/sheets";
@@ -40,6 +40,7 @@ function Hero({ L, d }: { L: LeagueT; d: Advice }) {
   return (
     <div className="pt-10 md:pt-20 desk:pt-24">
       <p className="text-[15px] font-medium text-fg-2">{L.name || "Your league"}</p>
+      <p className="mt-0.5 text-[13px] text-fg-3">Your position</p>
       <div className="mt-3 flex flex-wrap items-end gap-x-10 gap-y-6">
         {isNum(L.rank) && (
           <p className="flex items-start">
@@ -54,7 +55,7 @@ function Hero({ L, d }: { L: LeagueT; d: Advice }) {
           {isNum(total) && (
             <div>
               <div className="num text-[28px] leading-none font-semibold">{int(total)}</div>
-              <div className="mt-2 text-[13px] text-fg-3">Managers</div>
+              <div className="mt-2 text-[13px] text-fg-3">Managers in league</div>
             </div>
           )}
           {isNum(L.gap_to_leader) && (
@@ -62,7 +63,7 @@ function Hero({ L, d }: { L: LeagueT; d: Advice }) {
               <div className={`num text-[28px] leading-none font-semibold ${lead ? "text-grass-ink" : "text-red"}`}>
                 {lead ? (isNum(leadBy) && leadBy > 0 ? `+${int(leadBy)}` : "Top") : `−${int(L.gap_to_leader)}`}
               </div>
-              <div className="mt-2 text-[13px] text-fg-3">{lead ? "Clear" : "To 1st"}</div>
+              <div className="mt-2 text-[13px] text-fg-3">{lead ? "Points clear in 1st" : "Points behind 1st"}</div>
             </div>
           )}
         </div>
@@ -78,9 +79,20 @@ function Standings({ L }: { L: LeagueT }) {
   const leaderPts = isNum(leader?.total) ? leader!.total! : null;
   const inTable = new Set(table.map((r) => r.manager));
   const leftover = (L.rival_chips || []).filter((r) => r && Array.isArray(r.chips) && !inTable.has(r.manager));
+  const hasChips = [...chipsBy.values()].some((c) => c && c.length > 0);
   if (!table.length) return null;
   return (
-    <Section title="Standings" meta={<span className="hidden sm:inline">GW · Total · To 1st</span>} className="mt-16 md:mt-24">
+    <Section title="Standings" className="mt-16 md:mt-24">
+      <div
+        aria-hidden="true"
+        className="grid grid-cols-[1.75rem_1fr_auto_auto_3.5rem] sm:grid-cols-[1.75rem_1fr_auto_auto_4.5rem] items-end gap-x-3 pb-2 text-[12px] leading-tight text-fg-3 sm:gap-x-5"
+      >
+        <span />
+        <span>Manager</span>
+        <span className="w-[3.25rem] text-right">This GW</span>
+        <span className="w-[2.75rem] text-right">Total</span>
+        <span className="text-right">Behind 1st</span>
+      </div>
       <m.ol variants={list} initial="hidden" animate="show" aria-label="Standings">
         {table.map((r, i) => {
           const gap = i > 0 && isNum(r.rank) && isNum(table[i - 1].rank) && r.rank - table[i - 1].rank > 1;
@@ -102,7 +114,7 @@ function Standings({ L }: { L: LeagueT }) {
                 />
               )}
               <div
-                className={`relative grid grid-cols-[1.75rem_1fr_auto_auto_3.5rem] items-center gap-x-3 py-3.5 sm:gap-x-5 ${
+                className={`relative grid grid-cols-[1.75rem_1fr_auto_auto_3.5rem] sm:grid-cols-[1.75rem_1fr_auto_auto_4.5rem] items-center gap-x-3 py-3.5 sm:gap-x-5 ${
                   r.is_me ? "" : "border-t border-line"
                 } ${i === 0 ? "border-t-0" : ""}`}
               >
@@ -112,15 +124,15 @@ function Standings({ L }: { L: LeagueT }) {
                     <span className={`truncate text-[16px] ${r.is_me ? "font-semibold" : "font-medium"}`}>{r.manager}</span>
                     {r.is_me && <span className="sr-only">(you)</span>}
                   </span>
-                  <span className="mt-0.5 flex items-center gap-2">
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="truncate text-[13px] text-fg-3">{r.team_name}</span>
                     {!r.is_me && <ChipCodes chips={chipsBy.get(r.manager)} />}
                   </span>
                 </span>
-                <span className="num text-right text-[15px] text-fg-2" title="This gameweek">
+                <span className="num w-[3.25rem] text-right text-[15px] text-fg-2">
                   {int(r.event_total)}
                 </span>
-                <span className="num text-right text-[17px] font-semibold">{int(r.total)}</span>
+                <span className="num w-[2.75rem] text-right text-[17px] font-semibold">{int(r.total)}</span>
                 <span className={`num text-right text-[15px] ${behind === 0 ? "text-grass-ink" : "text-fg-2"}`}>
                   {behind === null ? "–" : behind === 0 ? "1st" : `−${int(behind)}`}
                 </span>
@@ -129,9 +141,21 @@ function Standings({ L }: { L: LeagueT }) {
           );
         })}
       </m.ol>
+      {hasChips && (
+        <Legend
+          className="mt-4"
+          items={[
+            [<span key="l" className="text-fg-2">Chips left:</span>, ""],
+            ...(["WC Wildcard", "FH Free Hit", "BB Bench Boost", "TC Triple Captain"].map((t) => [
+              <span key={t} className="num rounded-[5px] px-1 text-[10px] leading-4 font-semibold tracking-wide text-fg-2 ring-1 ring-line-2 ring-inset">{t.slice(0, 2)}</span>,
+              t.slice(3),
+            ]) as [ReactNode, string][]),
+          ]}
+        />
+      )}
       {leftover.length > 0 && (
         <div className="mt-6 border-t border-line pt-5">
-        <h3 className="mb-2 text-[13px] text-fg-3">Others</h3>
+        <h3 className="mb-2 text-[13px] text-fg-3">Other rivals: chips left</h3>
         <ul className="space-y-2">
           {leftover.map((r) => (
             <li key={r.manager} className="flex items-center justify-between gap-4 text-[15px]">
@@ -153,7 +177,7 @@ function Target({ L, d }: { L: LeagueT; d: Advice }) {
   const onPace = isNum(L.my_average) && isNum(L.required_per_gw) && L.my_average >= L.required_per_gw;
   const max = Math.max(L.required_per_gw || 0, L.my_average || 0, 1) * 1.1;
   return (
-    <Section title="To win" className="mt-16 md:mt-20 desk:mt-24">
+    <Section title="What it takes to win" sub="Estimated final total needed for 1st" className="mt-16 md:mt-20 desk:mt-24">
       <div className="pt-2">
         <div className="flex items-end justify-between gap-4">
           <span className="num text-[48px] leading-none font-semibold tracking-[-0.03em]">
@@ -161,7 +185,7 @@ function Target({ L, d }: { L: LeagueT; d: Advice }) {
           </span>
           {isNum(L.remaining_gws) && (
             <span className="pb-1 text-[15px] text-fg-2">
-              <span className="num font-semibold text-fg">{L.remaining_gws}</span> GWs left
+              <span className="num font-semibold text-fg">{L.remaining_gws}</span> gameweeks left
             </span>
           )}
         </div>
@@ -169,20 +193,20 @@ function Target({ L, d }: { L: LeagueT; d: Advice }) {
           <>
             <Meter value={me / L.target} className="mt-5 h-2" />
             <div className="num mt-2 flex justify-between text-[13px] text-fg-3">
-              <span>{int(me)}</span>
+              <span>{int(me)} so far</span>
               <span>{int(Math.max(0, L.target - me))} to go</span>
             </div>
           </>
         )}
         {isNum(L.required_per_gw) && (
           <dl className="mt-8 space-y-4">
-            <div className="grid grid-cols-[7.5rem_1fr_3rem] items-center gap-4">
-              <dt className="text-[15px] text-fg-2">Needed / GW</dt>
+            <div className="grid grid-cols-[10rem_1fr_3rem] items-center gap-4">
+              <dt className="text-[15px] text-fg-2">Needed per gameweek</dt>
               <dd><Meter value={L.required_per_gw / max} tone="fg" /></dd>
               <dd className="num text-right text-[17px] font-semibold">{f1(L.required_per_gw)}</dd>
             </div>
-            <div className="grid grid-cols-[7.5rem_1fr_3rem] items-center gap-4">
-              <dt className="text-[15px] text-fg-2">Your average</dt>
+            <div className="grid grid-cols-[10rem_1fr_3rem] items-center gap-4">
+              <dt className="text-[15px] text-fg-2">Your average so far</dt>
               <dd><Meter value={(L.my_average || 0) / max} tone={onPace ? "grass" : "amber"} delay={0.1} /></dd>
               <dd className={`num text-right text-[17px] font-semibold ${onPace ? "text-grass-ink" : "text-amber"}`}>{f1(L.my_average)}</dd>
             </div>
@@ -190,7 +214,7 @@ function Target({ L, d }: { L: LeagueT; d: Advice }) {
         )}
         {L.last_season_best && (
           <p className="mt-6 text-[13px] text-fg-3">
-            Last season's best: <span className="num">{int(L.last_season_best.points)}</span> ({L.last_season_best.manager})
+            Best total in this league last season: <span className="num">{int(L.last_season_best.points)}</span> ({L.last_season_best.manager})
           </p>
         )}
       </div>
@@ -200,7 +224,7 @@ function Target({ L, d }: { L: LeagueT; d: Advice }) {
             className="py-4"
             onClick={() =>
               show({
-                title: "Strategy",
+                title: "Your league strategy",
                 body: (
                   <Prose>
                     <p>
@@ -211,7 +235,7 @@ function Target({ L, d }: { L: LeagueT; d: Advice }) {
               })
             }
           >
-            <span className="flex-1 text-[17px] font-medium">Strategy</span>
+            <span className="flex-1 text-[17px] font-medium">Your league strategy</span>
             <Chevron />
           </RowButton>
         </m.ul>
@@ -226,20 +250,28 @@ function Ownership({ L, d }: { L: LeagueT; d: Advice }) {
   const total = L.total_managers || L.size;
   const partial = isNum(total) && isNum(L.tracked) && L.tracked < total;
   const rows: Player[] = (tab === "threats" ? L.threats : L.differentials) || [];
-  const label = partial ? "Tracked rivals own" : "Rivals own";
+  const label = partial ? "Tracked rivals who own" : "Rivals who own";
   if (!L.threats?.length && !L.differentials?.length) return null;
   return (
-    <Section title="Rival ownership" meta={partial ? `${L.tracked} tracked` : null} className="mt-16 md:mt-20">
+    <Section
+      title="Players that can swing the league"
+      sub={tab === "threats" ? "Most rivals own them, you don't" : "In your team, few rivals own them"}
+      meta={partial ? `Based on ${L.tracked} rivals` : null}
+      className="mt-16 md:mt-20"
+    >
       <Segmented
-        label="Ownership list"
+        label="Which players to show"
         value={tab}
         onChange={setTab}
         className="mt-2 mb-4"
         items={[
-          { id: "threats", label: "Threats" },
-          { id: "diffs", label: "Differentials" },
+          { id: "threats", label: "Rivals have" },
+          { id: "diffs", label: "Only you have" },
         ]}
       />
+      {rows.length > 0 && (
+        <p aria-hidden="true" className="flex justify-end pb-1 text-[12px] text-fg-3">% of {partial ? "tracked " : ""}rivals who own</p>
+      )}
       {rows.length ? (
         <m.ul key={tab} variants={list} initial="hidden" animate="show">
           {rows.map((p, i) => (
@@ -257,7 +289,7 @@ function Ownership({ L, d }: { L: LeagueT; d: Advice }) {
           ))}
         </m.ul>
       ) : (
-        <p className="py-4 text-[15px] text-fg-3">None</p>
+        <p className="py-4 text-[15px] text-fg-3">No players here this week</p>
       )}
     </Section>
   );

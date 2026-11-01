@@ -1,8 +1,9 @@
 import { AnimatePresence, LayoutGroup, m } from "motion/react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useSheet } from "../components/Sheet";
 import { Segmented } from "../components/Tabs";
 import { Token } from "../components/Token";
+import { DotMark, Legend } from "../components/ui";
 import { availability, f1, int, isNum, money } from "../lib/format";
 import { useMedia } from "../lib/useMedia";
 import type { Advice, Player, Sheet } from "../lib/types";
@@ -170,7 +171,7 @@ function Pitch({ s, fresh, d }: { s: Sheet; fresh: Set<number>; d: Advice }) {
       {bench.length > 0 && (
         <div className="mt-4 rounded-[28px] bg-[var(--bench)] px-2 pt-5 pb-4 sm:px-6">
           <h3 className={`mb-3 text-center text-[13px] font-medium ${s.bench_boost ? "text-grass-ink" : "text-fg-3"}`}>
-            {s.bench_boost ? "Bench Boost" : "Bench"}
+            {s.bench_boost ? "Bench Boost: the bench scores too" : "Bench: substitutes, in order"}
           </h3>
           <ul aria-label="Bench, in order" className="flex justify-center">
             <AnimatePresence mode="popLayout" initial={false}>
@@ -194,6 +195,18 @@ function Pitch({ s, fresh, d }: { s: Sheet; fresh: Set<number>; d: Advice }) {
   );
 }
 
+function Badge({ k }: { k: "C" | "V" }) {
+  return (
+    <span
+      className={`grid size-[17px] place-items-center rounded-full text-[10px] font-bold ${
+        k === "C" ? "bg-fg text-bg" : "bg-fg-3 text-bg"
+      }`}
+    >
+      {k}
+    </span>
+  );
+}
+
 export function Team({ d }: { d: Advice }) {
   const L = d.lineup;
   const C = L?.current && L.current.xi?.length ? L.current : null;
@@ -205,11 +218,21 @@ export function Team({ d }: { d: Advice }) {
   const fresh = C && view === "after" ? new Set([...ids(L)].filter((id) => !ids(C).has(id))) : new Set<number>();
   const t = d.team || {};
   const facts = [
-    isNum(t.value) ? ["Value", money(t.value)] : null,
-    isNum(t.bank) ? ["Bank", money(t.bank)] : null,
-    isNum(t.total_points) ? ["Points", int(t.total_points)] : null,
+    isNum(t.value) ? ["Squad value", money(t.value)] : null,
+    isNum(t.bank) ? ["In the bank", money(t.bank)] : null,
+    isNum(t.total_points) ? ["Total points", int(t.total_points)] : null,
   ].filter(Boolean) as [string, string][];
-  const toggle = (cls: string) =>
+  const caption = (cls: string) =>
+    C ? <p className={`text-[13px] text-fg-3 ${cls}`}>Numbers are expected points this week</p> : null;
+  const legendItems: [ReactNode, string][] = [
+    [<Badge key="c" k="C" />, "Captain"],
+    [<Badge key="v" k="V" />, "Vice-captain"],
+    [<DotMark key="b" tone="bad" />, "Injured or out"],
+    [<DotMark key="w" tone="warn" />, "Doubtful"],
+    ...(fresh.size ? ([[<span key="n" className="inline-block size-3 rounded-full ring-2 ring-fg-2" />, "New signing"]] as [ReactNode, string][]) : []),
+    [<span key="x" className="num text-fg-2">5.2</span>, "Expected points this week"],
+  ];
+  const toggle = (cls: string, stack = false) =>
     C ? (
       <Segmented
         label="Which team to show"
@@ -223,7 +246,10 @@ export function Team({ d }: { d: Advice }) {
             name: `Now, ${f1(C.expected_points)} expected points`,
             label: (
               <>
-                Now <span className="num text-fg-2">{f1(C.expected_points)}</span>
+                <span className={stack ? "flex flex-col leading-tight" : "contents"}>
+                  <span className="whitespace-nowrap">Your team now</span>
+                  <span className="num text-fg-2">{f1(C.expected_points)}</span>
+                </span>
               </>
             ),
           },
@@ -232,7 +258,10 @@ export function Team({ d }: { d: Advice }) {
             name: `After the suggested moves, ${f1(L.expected_points)} expected points`,
             label: (
               <>
-                After <span className="num text-grass-ink">{f1(L.expected_points)}</span>
+                <span className={stack ? "flex flex-col leading-tight" : "contents"}>
+                  <span className="whitespace-nowrap">After our moves</span>
+                  <span className="num text-grass-ink">{f1(L.expected_points)}</span>
+                </span>
               </>
             ),
           },
@@ -240,20 +269,25 @@ export function Team({ d }: { d: Advice }) {
       />
     ) : (
       <p className={`text-[15px] text-fg-2 ${cls}`}>
-        <span className="num text-[17px] font-semibold text-fg">{f1(L.expected_points)}</span> xP
+        <span className="num text-[17px] font-semibold text-fg">{f1(L.expected_points)}</span> expected points this week
       </p>
     );
   const flagged = [...sheet.xi, ...(sheet.bench || [])].filter((p) => availability(p));
   return (
     <div className="mx-auto w-full max-w-[600px] px-4 pt-8 pb-8 md:px-0 md:pt-14 desk:grid desk:max-w-[1120px] desk:grid-cols-[minmax(0,1fr)_260px] desk:gap-x-14 desk:px-8">
       <div>
-        {toggle("mx-auto mb-6 max-w-[420px] text-center desk:hidden")}
+        {toggle("mx-auto max-w-[420px] text-center desk:hidden")}
+        {caption("mt-2 mb-6 text-center desk:hidden")}
+        {!C && <div className="mb-6 desk:hidden" />}
         <LayoutGroup>
           <Pitch s={sheet} fresh={fresh} d={d} />
         </LayoutGroup>
+        <Legend items={legendItems} className="mt-4 justify-center" />
       </div>
       <aside className="desk:sticky desk:top-28 desk:self-start">
-        {toggle("hidden desk:grid desk:mb-12")}
+        {toggle("hidden desk:grid", true)}
+        {caption("hidden desk:block desk:mt-2")}
+        <div className="hidden desk:block desk:mb-12" />
         {facts.length > 0 && (
           <dl className="mt-10 grid grid-cols-3 gap-4 text-center desk:mt-0 desk:grid-cols-1 desk:gap-0 desk:text-left">
             {facts.map(([k, v]) => (

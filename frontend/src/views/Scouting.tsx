@@ -3,12 +3,19 @@ import { useState, type ReactNode } from "react";
 import { useSheet, type SheetSpec } from "../components/Sheet";
 import { Segmented } from "../components/Tabs";
 import { Token } from "../components/Token";
-import { Chevron, list, Meter, RowButton, Section, SubHead, Tip } from "../components/ui";
+import { Chevron, DotMark, Legend, list, Meter, RowButton, Section, SubHead, Tip } from "../components/ui";
 import { CHIP_LABEL, int, isNum, ordinal, pct, safeUrl, shortDate } from "../lib/format";
 import type { Advice, Consensus, Creator, Creators, Elite, Player, PlayerRef } from "../lib/types";
 import { playerSheet } from "../sheets/sheets";
 
 type EliteTab = "owned" | "missing" | "bought" | "sold";
+
+const ELITE_SUB: Record<EliteTab, string> = {
+  owned: "Players they own most",
+  missing: "They own these, you don't",
+  bought: "Bought last gameweek",
+  sold: "Sold last gameweek",
+};
 
 function YourDot({ on }: { on?: boolean }) {
   if (!on) return null;
@@ -33,22 +40,26 @@ function EliteBlock({ E, d }: { E: Elite; d: Advice }) {
   const seasons = E.seasons?.length ? `${E.seasons[0]}–${E.seasons[E.seasons.length - 1]}` : null;
   return (
     <Section
-      title={`Top ${E.managers ?? ""} managers`}
-      meta={isNum(E.gameweek) ? `GW${E.gameweek}` : null}
+      title={`What the top ${E.managers ?? ""} managers do`}
+      sub={`Consistently high finishers${isNum(E.gameweek) ? `, as of GW${E.gameweek}` : ""}`}
       className="pt-10 md:pt-20 desk:pt-24"
     >
       <Segmented
-        label="Elite list"
+        label="Which list to show"
         value={tab}
         onChange={setTab}
         className="mt-2 mb-4"
         items={[
-          { id: "owned", label: "Owned" },
-          { id: "missing", label: "Missing" },
+          { id: "owned", label: "Own" },
+          { id: "missing", label: "Not yours" },
           { id: "bought", label: "Bought" },
           { id: "sold", label: "Sold" },
         ]}
       />
+      <p className="flex items-baseline justify-between gap-4 pb-1 text-[12px] text-fg-3">
+        <span>{ELITE_SUB[tab]}</span>
+        <span className="shrink-0 text-right">{tab === "owned" || tab === "missing" ? "% who own" : "Managers"}</span>
+      </p>
       {rows.length ? (
         <m.ul key={tab} variants={list} initial="hidden" animate="show">
           {rows.map((p, i) => {
@@ -65,13 +76,15 @@ function EliteBlock({ E, d }: { E: Elite; d: Advice }) {
             return (
               <RowButton key={p.id} className="py-3.5" label={`${p.name}${p.in_your_team ? ", in your team" : ""}`} onClick={() => show(playerSheet(p, d))}>
                 <Token team={p.team} size={30} label={false} />
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="truncate text-[17px] font-medium">{p.name}</span>
-                  <YourDot on={p.in_your_team} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-[17px] font-medium">{p.name}</span>
+                    <YourDot on={p.in_your_team} />
+                  </span>
+                  {tab === "owned" && isNum(p.elite_captain) && p.elite_captain >= 0.05 && (
+                    <span className="num block text-[13px] text-fg-3">Captained by {pct(p.elite_captain)}</span>
+                  )}
                 </span>
-                {tab === "owned" && isNum(p.elite_captain) && p.elite_captain >= 0.05 && (
-                  <span className="num hidden text-[13px] text-fg-3 sm:inline">{pct(p.elite_captain)} C</span>
-                )}
                 <Meter value={frac} tone={tab === "sold" ? "red" : "grass"} className="w-16 sm:w-28" delay={i * 0.04} />
                 <span className={`num w-11 text-right text-[17px] font-semibold ${tab === "sold" ? "text-red" : ""}`}>{val}</span>
               </RowButton>
@@ -79,15 +92,17 @@ function EliteBlock({ E, d }: { E: Elite; d: Advice }) {
           })}
         </m.ul>
       ) : (
-        <p className="py-4 text-[15px] text-fg-3">None</p>
+        <p className="py-4 text-[15px] text-fg-3">No players here this week</p>
+      )}
+      {rows.some((p) => p.in_your_team) && (
+        <Legend className="mt-3" items={[[<DotMark key="y" tone="grass" />, "In your team"]]} />
       )}
       {(seasons || isNum(E.median_rank)) && (
         <p className="mt-6 text-[13px] text-fg-3">
-          Best typical finish{seasons ? `, ${seasons}` : ""}
+          Their typical overall finish{seasons ? `, ${seasons}` : ""}
           {isNum(E.median_rank) && (
             <>
-              {" "}
-              · around <span className="num">{int(Math.round(E.median_rank))}</span>
+              : around <span className="num">{int(Math.round(E.median_rank))}</span>
               {ordinal(Math.round(E.median_rank))}
             </>
           )}
@@ -98,9 +113,9 @@ function EliteBlock({ E, d }: { E: Elite; d: Advice }) {
 }
 
 const KIND: Record<string, { label: string; cls: string; seg: string }> = {
-  buy: { label: "Buy", cls: "text-grass-ink", seg: "bg-grass" },
-  sell: { label: "Sell", cls: "text-red", seg: "bg-red" },
-  captain: { label: "Captain", cls: "text-fg", seg: "bg-fg" },
+  buy: { label: "Buying", cls: "text-grass-ink", seg: "bg-grass" },
+  sell: { label: "Selling", cls: "text-red", seg: "bg-red" },
+  captain: { label: "Captaining", cls: "text-fg", seg: "bg-fg" },
 };
 
 function Segs({ count, of, cls }: { count?: number; of?: number; cls: string }) {
@@ -143,8 +158,8 @@ function AgreeRow({ a }: { a: Consensus }) {
         <PlayerLabel p={a.player} fallback={a.text} />
         <span className={`text-[15px] font-medium ${k.cls}`}>{k.label}</span>
         <Segs count={a.count} of={a.of} cls={k.seg} />
-        <span className="num w-8 text-right text-[15px] text-fg-2">
-          {a.count}/{a.of}
+        <span className="num w-12 text-right text-[15px] text-fg-2">
+          {a.count} of {a.of}
         </span>
       </span>
     </m.li>
@@ -161,7 +176,7 @@ function SplitRow({ x }: { x: Consensus }) {
           <span key={i} className="flex min-w-0 items-center gap-2">
             <Token team={o.player!.team} size={24} label={false} />
             <span className="truncate text-[15px] font-medium">{o.player!.name}</span>
-            <span className="num text-[15px] text-fg-2">{o.who?.length ?? 0}</span>
+            <span className="num text-[13px] text-fg-3">{o.who?.length ?? 0}{isNum(x.of) ? ` of ${x.of}` : ""}</span>
           </span>
         ))}
       </span>
@@ -170,7 +185,7 @@ function SplitRow({ x }: { x: Consensus }) {
       <m.li variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="flex items-center gap-4 border-t border-line py-3.5 first:border-t-0">
         <span className="sr-only">{x.text}</span>
         <span aria-hidden="true" className="contents">
-          <span className="text-[15px] font-medium text-fg-2">Captain</span>
+          <span className="text-[15px] font-medium text-fg-2">Captain pick</span>
           {bar}
         </span>
       </m.li>
@@ -185,8 +200,8 @@ function SplitRow({ x }: { x: Consensus }) {
         <PlayerLabel p={x.player} fallback={x.text} />
         {b + s > 0 && (
           <span className="num flex items-center gap-3 text-[15px] font-medium">
-            <span className="text-grass-ink">Buy {b}</span>
-            <span className="text-red">Sell {s}</span>
+            <span className="text-grass-ink">{b} buying</span>
+            <span className="text-red">{s} selling</span>
           </span>
         )}
       </span>
@@ -300,12 +315,21 @@ function creatorSheet(c: Creator, R: Creators): SheetSpec {
             {CHIP_LABEL[c.chip || ""]}
           </p>
         )}
+        {(buying.length > 0 || selling.length > 0 || caps.length > 0) && (
+          <Legend
+            className="mt-6"
+            items={[
+              [<span key="s" className="inline-block h-3 w-5 rounded-full ring-1 ring-fg-3 ring-inset" />, "Decided"],
+              [<span key="d" className="inline-block h-3 w-5 rounded-full border border-dashed border-fg-3" />, "Still considering"],
+            ]}
+          />
+        )}
         <Group label="Buying">{buying}</Group>
         <Group label="Selling">{selling}</Group>
         <Group label="Captain">{caps}</Group>
         {A && (
           <>
-            <SubHead>Did in GW{A.gameweek}</SubHead>
+            <SubHead>What they actually did in GW{A.gameweek}</SubHead>
             <div className="flex flex-wrap gap-2">
               {refs(A.transfers_in).map((p) => (
                 <Pill key={`i${p.id}`} p={p} tone="in" />
@@ -344,7 +368,11 @@ function CreatorsBlock({ R }: { R: Creators }) {
   return (
     <>
       {enough && (agree.length > 0 || split.length > 0) && (
-        <Section title="Creators agree" meta={isNum(R.gameweek) ? `GW${R.gameweek}` : null} className="mt-16 md:mt-24 desk:mt-0">
+        <Section
+          title="Where FPL YouTubers agree"
+          sub={`Plans from their GW${R.gameweek ?? ""} videos`}
+          className="mt-16 md:mt-24 desk:mt-0"
+        >
           {agree.length ? (
             <m.ul variants={list} initial="hidden" whileInView="show" viewport={{ once: true }}>
               {agree.map((a, i) => (
@@ -352,11 +380,12 @@ function CreatorsBlock({ R }: { R: Creators }) {
               ))}
             </m.ul>
           ) : (
-            <p className="py-4 text-[15px] text-fg-3">No consensus</p>
+            <p className="py-4 text-[15px] text-fg-3">No clear agreement this week</p>
           )}
           {split.length > 0 && (
             <>
-              <h3 className="mt-10 pb-2 text-[15px] font-medium text-fg-2">Split</h3>
+              <h3 className="mt-10 text-[15px] font-medium text-fg-2">Where they disagree</h3>
+              <p className="pb-2 text-[13px] text-fg-3">Number of YouTubers on each side</p>
               <m.ul variants={list} initial="hidden" whileInView="show" viewport={{ once: true }}>
                 {split.map((x, i) => (
                   <SplitRow key={i} x={x} />
@@ -367,8 +396,8 @@ function CreatorsBlock({ R }: { R: Creators }) {
         </Section>
       )}
       <Section
-        title="Creators"
-        meta={isNum(R.with_video) ? `${R.with_video} of ${n} posted` : null}
+        title="FPL YouTubers' plans"
+        sub={isNum(R.with_video) ? `${R.with_video} of ${n} have posted a GW${R.gameweek ?? ""} video` : undefined}
         className="mt-16 md:mt-20"
       >
         <m.ul variants={list} initial="hidden" whileInView="show" viewport={{ once: true }}>

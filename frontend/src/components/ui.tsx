@@ -12,15 +12,17 @@ export const item: Variants = {
   show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 30 } },
 };
 
-/** A titled block. The title is quiet; the content carries the weight. */
+/** A titled block. The title is quiet; an optional muted line under it says what the numbers mean. */
 export function Section({
   title,
+  sub,
   meta,
   children,
   className = "",
   id,
 }: {
   title: string;
+  sub?: ReactNode;
   meta?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -28,16 +30,40 @@ export function Section({
 }) {
   return (
     <section aria-labelledby={id} className={className}>
-      <header className="flex items-baseline justify-between gap-4 pb-2">
-        <h2 id={id} className="text-[15px] font-medium text-fg-2">
-          {title}
-        </h2>
-        {meta && <div className="text-right text-sm text-fg-3">{meta}</div>}
+      <header className="pb-2">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id={id} className="text-[15px] font-medium text-fg-2">
+            {title}
+          </h2>
+          {meta && <div className="text-right text-sm text-fg-3">{meta}</div>}
+        </div>
+        {sub && <p className="mt-0.5 text-[13px] text-fg-3">{sub}</p>}
       </header>
       {children}
     </section>
   );
 }
+
+/** A one-line key for the marks used in a list: shown, not hovered, so it works on phones. */
+export function Legend({ items, className = "" }: { items: [ReactNode, string][]; className?: string }) {
+  if (!items.length) return null;
+  return (
+    <ul className={`flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] text-fg-3 ${className}`}>
+      {items.map(([mark, label]) => (
+        <li key={label} className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="inline-flex items-center">
+            {mark}
+          </span>
+          {label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export const DotMark = ({ tone }: { tone: "bad" | "warn" | "grass" }) => (
+  <span className={`inline-block size-2 rounded-full ${tone === "bad" ? "bg-red" : tone === "warn" ? "bg-amber-dot" : "bg-grass"}`} />
+);
 
 export function Chevron({ className = "" }: { className?: string }) {
   return (

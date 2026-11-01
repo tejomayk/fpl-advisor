@@ -1,9 +1,10 @@
 import { m } from "motion/react";
+import type { ReactNode } from "react";
 import { CountUp } from "../components/CountUp";
 import { useSheet } from "../components/Sheet";
 import { Token } from "../components/Token";
-import { Chevron, list, Rise, RowButton, Section, StatusDot, Tip } from "../components/ui";
-import { f1, horizonLabel, isNum, money, signed } from "../lib/format";
+import { Chevron, DotMark, Legend, list, Rise, RowButton, Section, StatusDot, Tip } from "../components/ui";
+import { availability, f1, horizonLabel, isNum, money, signed } from "../lib/format";
 import type { Advice, Move, Player } from "../lib/types";
 import {
   captainSheet,
@@ -37,14 +38,15 @@ function Hero({ d, demo }: { d: Advice; demo: boolean }) {
           <p className="num mt-3 text-[clamp(72px,18vw,128px)] leading-[0.88] font-semibold tracking-[-0.03em] text-grass-ink">
             <CountUp value={gain!} sign />
           </p>
-          <p className="num mt-5 flex flex-wrap items-center gap-x-2.5 text-[17px] text-fg-2">
-            <span>{f1(now)}</span>
+          <p className="mt-4 text-[17px] text-fg">Extra expected points this week from these moves</p>
+          <p className="num mt-2 flex flex-wrap items-center gap-x-2 text-[15px] text-fg-2">
+            <span>{f1(now)} now</span>
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" className="text-fg-3">
               <path d="M4 12h15m-5-5 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span className="sr-only">to</span>
             <span className="font-semibold text-fg">{f1(after)}</span>
-            <span>xP this week</span>
+            <span>after</span>
           </p>
         </>
       ) : (
@@ -53,7 +55,7 @@ function Hero({ d, demo }: { d: Advice; demo: boolean }) {
             <span className="num text-[clamp(72px,18vw,128px)] leading-[0.88] font-semibold tracking-[-0.03em]">
               <CountUp value={after} />
             </span>
-            <span className="text-[17px] text-fg-2">xP this week</span>
+            <span className="text-[17px] text-fg-2">expected points this week</span>
           </p>
         )
       )}
@@ -68,7 +70,7 @@ function TransferRow({ mv, d, i }: { mv: Move; d: Advice; i: number }) {
   return (
     <RowButton onClick={() => show(transferSheet(mv, d))} label={`Sell ${o.name}, buy ${n.name}`} className="py-5">
       <span className="flex min-w-0 items-stretch gap-3">
-        <Tip label="Sell ↓ Buy" className="w-[30px] shrink-0">
+        <Tip label="Out, then in" className="w-[30px] shrink-0">
         <span aria-hidden="true" className="flex w-[30px] flex-col items-center">
           <Token team={o.team} size={30} dim label={false} />
           <span className="relative my-1 w-px flex-1 bg-line-2">
@@ -81,11 +83,13 @@ function TransferRow({ mv, d, i }: { mv: Move; d: Advice; i: number }) {
         </Tip>
         <span className="flex min-w-0 flex-col justify-between gap-5 py-[3px]">
           <span className="flex min-w-0 items-baseline gap-2">
+            <span className="w-7 shrink-0 text-[12px] font-semibold text-red">Out</span>
             <span className="truncate text-[17px] text-fg-2">{o.name}</span>
             <span className="text-[12px] font-medium text-fg-3">{o.team}</span>
             <StatusDot p={o} className="self-center" />
           </span>
           <span className="flex min-w-0 items-baseline gap-2">
+            <span className="w-7 shrink-0 text-[12px] font-semibold text-grass-ink">In</span>
             <span className="truncate text-[17px] font-semibold">{n.name}</span>
             <span className="text-[12px] font-medium text-fg-3">{n.team}</span>
             <span className="self-center">
@@ -136,7 +140,11 @@ function Transfers({ d }: { d: Advice }) {
   if (tr.initial) {
     const squad = tr.squad || [];
     return (
-      <Section title="Your squad" meta={isNum(tr.bank_after) ? `${money(tr.bank_after)} left` : null}>
+      <Section
+        title="Your squad"
+        sub={`Price, then expected points over ${horizonLabel(d.horizon)}`}
+        meta={isNum(tr.bank_after) ? `${money(tr.bank_after)} left in the bank` : null}
+      >
         {POS.map(([pos, label]) => {
           const ps = squad.filter((p) => p.pos === pos);
           if (!ps.length) return null;
@@ -159,15 +167,23 @@ function Transfers({ d }: { d: Advice }) {
   const ft = isNum(tr.free_transfers) ? tr.free_transfers : d.team?.free_transfers;
   const meta = (
     <span className="num">
-      {moves.length > 0 && horizonLabel(d.horizon) && <span>{horizonLabel(d.horizon)} · </span>}
-      {isNum(ft) && <span>{ft} free</span>}
+      {isNum(ft) && <span>{ft} free {ft === 1 ? "transfer" : "transfers"}</span>}
       {moves.length > 0 && isNum(tr.bank_after) && <span> · {money(tr.bank_after)} left</span>}
     </span>
   );
   const timing = (d.timing || []).filter(Boolean);
   const rises = moves.filter((m) => m.in?.price_move === "rise").length;
+  const marks: [ReactNode, string][] = [];
+  const kinds = new Set(moves.flatMap((x) => [availability(x.out)?.kind, availability(x.in)?.kind]));
+  if (kinds.has("bad")) marks.push([<DotMark tone="bad" />, "Injured or out"]);
+  if (kinds.has("warn")) marks.push([<DotMark tone="warn" />, "Doubtful"]);
+  if (moves.some((x) => x.in?.price_move === "rise")) marks.push([<Rise dir="rise" />, "Price may rise tonight"]);
   return (
-    <Section title="Transfers" meta={meta}>
+    <Section
+      title="Transfers"
+      sub={moves.length ? `Gain in expected points over ${horizonLabel(d.horizon) || "the next few gameweeks"}` : undefined}
+      meta={meta}
+    >
       {moves.length ? (
         <m.ul variants={list} initial="hidden" animate="show">
           {moves.map((mv, i) => (
@@ -180,9 +196,10 @@ function Transfers({ d }: { d: Advice }) {
           animate={{ opacity: 1, y: 0 }}
           className="py-5 text-[22px] font-semibold tracking-[-0.01em]"
         >
-          Save your transfer
+          Save your transfer for next week
         </m.p>
       )}
+      <Legend items={marks} className="mt-4" />
       {(hits > 0 || timing.length > 0) && (
         <div className="mt-4 flex flex-wrap gap-2">
           {hits > 0 && (
@@ -192,7 +209,7 @@ function Transfers({ d }: { d: Advice }) {
               onClick={() => show(hitSheet(d))}
               className="num inline-flex h-9 items-center gap-2 rounded-full bg-red-soft px-4 text-sm font-semibold text-red"
             >
-              −{isNum(tr.hit_cost) ? tr.hit_cost : hits * 4} pts hit
+              −{isNum(tr.hit_cost) ? tr.hit_cost : hits * 4} points for extra transfers
             </m.button>
           )}
           {timing.length > 0 && (
@@ -205,7 +222,7 @@ function Transfers({ d }: { d: Advice }) {
               }`}
             >
               {rises ? <Rise dir="rise" /> : <ClockIcon />}
-              {rises ? (rises === 1 ? "Price rise tonight" : `${rises} price rises tonight`) : "When to transfer"}
+              {rises ? (rises === 1 ? "Buy before tonight's price rise" : `${rises} prices may rise tonight`) : "When to make transfers"}
             </m.button>
           )}
         </div>
@@ -230,7 +247,10 @@ function Captain({ d }: { d: Advice }) {
   if (!c || !p) return null;
   const mult = isNum(c.multiplier) ? c.multiplier : 2;
   return (
-    <Section title={mult === 3 ? "Triple captain" : "Captain"}>
+    <Section
+      title={mult === 3 ? "Triple captain" : "Captain"}
+      sub={`Scores ${mult === 3 ? "triple" : "double"}. The vice-captain is the backup.`}
+    >
       <m.ul variants={list} initial="hidden" animate="show">
         <RowButton onClick={() => show(captainSheet(d))} label={`Captain ${p.name}`} className="py-5">
           <span className="relative">
@@ -243,15 +263,17 @@ function Captain({ d }: { d: Advice }) {
             <span className="block truncate text-[22px] leading-tight font-semibold tracking-[-0.01em]">{p.name}</span>
             {c.vice && (
               <span className="mt-1 flex items-center gap-2 text-[15px] text-fg-2">
-                <span className="grid size-[18px] place-items-center rounded-full bg-raised text-[10px] font-bold text-fg-2">V</span>
-                {c.vice.name}
+                Vice-captain: {c.vice.name}
               </span>
             )}
           </span>
           <span className="flex items-center gap-2">
             {isNum(p.xp_next) && (
-              <span className="num text-[30px] font-semibold tracking-[-0.02em]">
-                <CountUp value={p.xp_next * mult} delay={0.2} />
+              <span className="text-right">
+                <span className="num block text-[30px] leading-none font-semibold tracking-[-0.02em]">
+                  <CountUp value={p.xp_next * mult} delay={0.2} />
+                </span>
+                <span className="mt-1 block text-[12px] text-fg-3">exp. points</span>
               </span>
             )}
             <Chevron />
@@ -268,9 +290,9 @@ function Chips({ d }: { d: Advice }) {
   if (!chips.length) return null;
   const now = chips.find((c) => c.play_now);
   return (
-    <Section title="Chips">
+    <Section title="Chips" sub="One-off boosts, each used once">
       <m.ul variants={list} initial="hidden" animate="show">
-        <RowButton onClick={() => show(chipsSheet(d))} label={now ? `Play ${now.name}` : "Keep all chips"} className="py-5">
+        <RowButton onClick={() => show(chipsSheet(d))} label={now ? `Play ${now.name}` : "Save your chips for later"} className="py-5">
           {now ? (
             <span className="flex-1 text-[22px] font-semibold tracking-[-0.01em]">
               Play <span className="text-grass-ink">{now.name || now.chip}</span>
@@ -278,7 +300,7 @@ function Chips({ d }: { d: Advice }) {
           ) : (
             <span className="min-w-0 flex-1">
               <span className="block text-[22px] leading-tight font-semibold tracking-[-0.01em]">
-                Keep {chips.length > 1 ? "all" : chips[0].name || chips[0].chip}
+                Save {chips.length > 1 ? "them" : "it"} for later
               </span>
               <span className="mt-1 block truncate text-[15px] text-fg-2">{chips.map((c) => c.name || c.chip).join(" · ")}</span>
             </span>
@@ -313,8 +335,8 @@ function BestMove({ d }: { d: Advice }) {
       className="group mb-1 hidden w-full rounded-[28px] bg-panel px-7 pt-5 pb-6 text-left ring-1 ring-line transition-colors ring-inset hover:bg-raised desk:block"
     >
       <span className="flex items-baseline justify-between text-[13px] text-fg-3">
-        <span>Best move</span>
-        <span className="num">{hz}</span>
+        <span>Biggest single gain</span>
+        <span className="num">expected points, {hz}</span>
       </span>
       <span className="mt-4 flex items-center gap-4">
         <span aria-hidden="true" className="flex items-center gap-2">
@@ -349,7 +371,7 @@ function PlayNow({ d }: { d: Advice }) {
       className="mt-10 flex w-full items-center gap-5 rounded-[28px] bg-grass px-6 py-6 text-left text-on-grass md:mt-14 md:px-8 md:py-7 desk:mt-0 desk:mb-1"
     >
       <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-medium opacity-75">Play now</span>
+        <span className="block text-[15px] font-medium opacity-75">Play this chip now</span>
         <span className="block text-[32px] leading-tight font-semibold tracking-[-0.02em] md:text-[40px]">{now.name || now.chip}</span>
       </span>
       <Chevron className="!text-on-grass opacity-70" />

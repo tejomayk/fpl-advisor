@@ -70,15 +70,16 @@ export function playerSheet(p: Player, d: Advice, extra?: { cv?: "C" | "V"; owne
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-raised px-4 py-4">
             <div className="num text-[34px] leading-none font-semibold tracking-tight">{f1(p.xp_next)}</div>
-            <div className="mt-2 text-[13px] text-fg-2">xP next{extra?.cv === "C" ? " · captain ×2" : ""}</div>
+            <div className="mt-2 text-[13px] text-fg-2">Expected points, next GW{extra?.cv === "C" ? " (doubled as captain)" : ""}</div>
           </div>
           <div className="rounded-2xl bg-raised px-4 py-4">
             <div className="num text-[34px] leading-none font-semibold tracking-tight">{f1(p.xp_horizon)}</div>
-            <div className="mt-2 text-[13px] text-fg-2">xP {hz}</div>
+            <div className="mt-2 text-[13px] text-fg-2">Expected points, {hz}</div>
           </div>
         </div>
-        <SubHead>Fixtures</SubHead>
+        <SubHead>Next fixtures</SubHead>
         <Fixtures fixtures={p.fixtures} />
+        <p className="mt-2 text-[13px] text-fg-3">H home · A away</p>
         <dl className="mt-6">
           <Stat
             k="Price"
@@ -93,8 +94,8 @@ export function playerSheet(p: Player, d: Advice, extra?: { cv?: "C" | "V"; owne
           {isNum(p.p_start) && <Stat k="Chance to start" v={pct(p.p_start)} />}
           {isNum(p.p_goal) && <Stat k="Chance to score" v={pct(p.p_goal)} />}
           {isNum(p.p_assist) && <Stat k="Chance to assist" v={pct(p.p_assist)} />}
-          {isNum(p.elite_own) && <Stat k="Elite managers own" v={pct(p.elite_own)} />}
-          {isNum(p.elite_captain) && p.elite_captain > 0 && <Stat k="Elite managers captain" v={pct(p.elite_captain)} />}
+          {isNum(p.elite_own) && <Stat k="Top managers who own" v={pct(p.elite_own)} />}
+          {isNum(p.elite_captain) && p.elite_captain > 0 && <Stat k="Top managers who captain" v={pct(p.elite_captain)} />}
           {isNum(extra?.ownership) && <Stat k={extra?.ownershipLabel || "Rivals own"} v={pct(extra?.ownership)} />}
         </dl>
         <News p={p} />
@@ -146,7 +147,7 @@ export function transferSheet(m: Move, d: Advice): SheetSpec {
           <span className={`num text-[64px] leading-[0.9] font-semibold tracking-[-0.03em] ${isNum(m.gain) && m.gain < 0 ? "text-red" : "text-grass-ink"}`}>
             {signed(m.gain)}
           </span>
-          <span className="pb-1.5 text-[15px] text-fg-2">xP {hz}</span>
+          <span className="pb-1.5 text-[15px] text-fg-2">expected points gained, {hz}</span>
         </div>
 
         <div className="mt-8 grid grid-cols-2 gap-4">
@@ -156,17 +157,18 @@ export function transferSheet(m: Move, d: Advice): SheetSpec {
           </div>
         </div>
         <div className="mt-4">
-          <CompareRow k="Price" a={money(isNum(o.sell_price) ? o.sell_price : o.price)} b={<span className="inline-flex items-center gap-1.5"><Rise dir={n.price_move} />{money(n.price)}</span>} />
-          <CompareRow k="xP next" a={f1(o.xp_next)} b={f1(n.xp_next)} />
-          <CompareRow k={`xP ${hz}`} a={f1(o.xp_horizon)} b={f1(n.xp_horizon)} />
-          {(isNum(o.p_goal) || isNum(n.p_goal)) && <CompareRow k="To score" a={pct(o.p_goal)} b={pct(n.p_goal)} />}
-          {(isNum(o.elite_own) || isNum(n.elite_own)) && <CompareRow k="Elite own" a={pct(o.elite_own)} b={pct(n.elite_own)} />}
+          <CompareRow k="Price (sell / buy)" a={money(isNum(o.sell_price) ? o.sell_price : o.price)} b={<span className="inline-flex items-center gap-1.5"><Rise dir={n.price_move} />{money(n.price)}</span>} />
+          <CompareRow k="Exp. points next GW" a={f1(o.xp_next)} b={f1(n.xp_next)} />
+          <CompareRow k={`Exp. points ${hz}`} a={f1(o.xp_horizon)} b={f1(n.xp_horizon)} />
+          {(isNum(o.p_goal) || isNum(n.p_goal)) && <CompareRow k="Chance to score" a={pct(o.p_goal)} b={pct(n.p_goal)} />}
+          {(isNum(o.elite_own) || isNum(n.elite_own)) && <CompareRow k="Top managers own" a={pct(o.elite_own)} b={pct(n.elite_own)} />}
           <div className="grid grid-cols-2 gap-3 border-t border-line pt-4">
             <Fixtures fixtures={o.fixtures} size="xs" max={3} />
             <div className="flex justify-end">
               <Fixtures fixtures={n.fixtures} size="xs" max={3} />
             </div>
           </div>
+          <p className="mt-2 text-center text-[13px] text-fg-3">Next fixtures: H home · A away</p>
         </div>
 
         {(m.why_out || m.why_in) && (
@@ -222,23 +224,28 @@ export function captainSheet(d: Advice): SheetSpec {
         <div className="flex items-end gap-3">
           <span className="num text-[64px] leading-[0.9] font-semibold tracking-[-0.03em]">{f1(isNum(p.xp_next) ? p.xp_next * mult : null)}</span>
           <span className="pb-1.5 text-[15px] text-fg-2">
-            {f1(p.xp_next)} × {mult}
+            expected points ({f1(p.xp_next)} × {mult} as captain)
           </span>
         </div>
         <div className="mt-6">
           <Fixtures fixtures={p.fixtures} max={3} />
+          <p className="mt-2 text-[13px] text-fg-3">Next fixtures: H home · A away</p>
         </div>
         {c.vice && (
           <div className="mt-8 flex items-center gap-3 rounded-2xl bg-raised px-4 py-3">
             <span className="grid size-6 place-items-center rounded-full bg-fg-2 text-[11px] font-bold text-bg">V</span>
             <Token team={c.vice.team} size={28} label={false} />
-            <span className="flex-1 font-medium">{c.vice.name}</span>
+            <span className="flex-1 font-medium">
+              {c.vice.name}
+              <span className="block text-[13px] font-normal text-fg-3">Vice-captain, the backup captain</span>
+            </span>
             <span className="num font-semibold">{f1(c.vice.xp_next)}</span>
           </div>
         )}
         {opts.length > 0 && (
           <>
-            <SubHead>Options</SubHead>
+            <SubHead>Captain options</SubHead>
+            <p className="-mt-1 mb-2 text-[13px] text-fg-3">Expected points next GW, before doubling</p>
             <ol>
               {opts.map((o, i) => (
                 <li key={o.id} className="flex items-center gap-3 border-t border-line py-3 first:border-t-0">
@@ -280,10 +287,10 @@ export function chipsSheet(d: Advice): SheetSpec {
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-[19px] font-semibold">{c.name || c.chip}</span>
               <span className={`text-sm font-medium ${c.play_now ? "text-grass-ink" : "text-fg-2"}`}>
-                {c.play_now ? "Play now" : "Keep"}
+                {c.play_now ? "Play now" : "Save for later"}
               </span>
             </div>
-            {isNum(c.expires_gw) && <div className="mt-0.5 text-[13px] text-fg-3">Until GW{c.expires_gw}</div>}
+            {isNum(c.expires_gw) && <div className="mt-0.5 text-[13px] text-fg-3">Use by GW{c.expires_gw}</div>}
             {c.reason && (
               <p className="mt-3 text-[15px] leading-relaxed text-fg-2">
                 <Md text={c.reason} />
@@ -317,7 +324,7 @@ export function timingSheet(d: Advice): SheetSpec {
 export function hitSheet(d: Advice): SheetSpec {
   const tr = d.transfers || {};
   return {
-    title: "Points hit",
+    title: "Points hit for extra transfers",
     body: (
       <Prose>
         <p>

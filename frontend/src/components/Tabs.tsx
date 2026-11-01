@@ -118,7 +118,7 @@ export function Segmented<T extends string>({
             aria-label={t.name}
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(t.id)}
-            className={`relative ${h} rounded-full px-3 text-[15px] font-medium transition-colors duration-200 ${
+            className={`relative ${h} rounded-full px-1.5 text-[15px] font-medium whitespace-nowrap transition-colors sm:px-3 duration-200 ${
               on ? "text-fg" : "text-fg-2 hover:text-fg"
             }`}
           >
