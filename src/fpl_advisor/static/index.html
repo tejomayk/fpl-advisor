@@ -6,10 +6,10 @@
 <title>FPL Advisor</title>
 <meta name="description" content="Free, unofficial Fantasy Premier League advice: weekly transfers, captain and chips, each explained in plain words. Paste your FPL link to start.">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f5f2ea" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0f1318" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F2F5EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#08110D" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="/static/fonts/barlow-condensed-bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/fl-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/styles.css">
 <script type="module" src="/static/app.js"></script>
 </head>
@@ -19,28 +19,21 @@
 <div class="masthead">
   <div class="wrap masthead-row">
     <a class="brand" href="/" aria-label="FPL Advisor, home">
-      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect x="3" y="6" width="26" height="20" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="6" x2="16" y2="26" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="16" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M4 7h24v18H4z" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16 7v18" stroke="currentColor" stroke-width="2.2"/><circle cx="16" cy="16" r="3.6" class="brand-dot"/></svg>
       <span class="brand-name">FPL Advisor</span>
     </a>
-    <p class="masthead-meta"><span class="tag">Unofficial</span><span class="masthead-free">Free &amp; open source</span></p>
+    <p class="masthead-meta">Unofficial <span aria-hidden="true">·</span> free &amp; open source</p>
   </div>
 </div>
 
 <header class="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="kicker">Your weekly matchday briefing</p>
-      <h1 class="hero-title">Know your moves before every deadline.</h1>
+      <h1 class="hero-title">Win the week <span class="hero-title-2">before kick&#8209;off.</span></h1>
       <p class="promise">Transfers, captain and chips for your Fantasy Premier League team. Every pick comes with a plain reason, so you learn the game as you go.</p>
-      <ul class="trust">
-        <li>No login, no password</li>
-        <li>Reads FPL's public data only</li>
-        <li>Free, every gameweek</li>
-      </ul>
     </div>
 
-    <div class="finder-card">
-      <p class="finder-kicker">Start here</p>
+    <div class="finder-card" id="finder-panel">
       <h2 class="finder-title">Get this week's advice</h2>
       <form id="finder" class="finder" novalidate>
         <div class="field">
@@ -50,74 +43,59 @@
           <p id="team-err" class="field-err" hidden></p>
         </div>
         <div class="field">
-          <label for="league">Mini-league ID or link <span class="optional">Optional</span></label>
+          <label for="league">Mini-league ID or link <span class="optional">optional</span></label>
           <input id="league" name="league" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
                  placeholder="e.g. 76543 or your league link" aria-describedby="league-err league-hint">
           <p id="league-hint" class="field-hint">Adds standings, rivals and a points target.</p>
           <p id="league-err" class="field-err" hidden></p>
         </div>
-        <button type="submit" id="go" class="btn btn-primary btn-block">Get my advice <span aria-hidden="true" class="btn-arrow">→</span></button>
+        <button type="submit" id="go" class="btn btn-primary">Get my advice <span aria-hidden="true" class="btn-arrow">→</span></button>
       </form>
-      <details class="help">
-        <summary>Where do I find these?</summary>
-        <div class="help-body">
-          <p><strong>Team ID.</strong> Open the FPL website or app and go to the <strong>Points</strong> page. The link contains <code>/entry/1234567/</code>. That number is your team ID. You can paste the whole link.</p>
-          <p><strong>League ID.</strong> Open your mini-league's standings. The link contains <code>/leagues/76543/</code>. Paste that link or the number.</p>
-          <p class="muted">In the app, use Share or copy the link from the browser version. The numbers above are examples.</p>
-        </div>
-      </details>
-      <p class="example">No IDs to hand? <a href="/?demo=1" id="demo-link">See an example</a></p>
+      <div class="finder-foot">
+        <a href="/?demo=1" id="demo-link" class="demo-link">See an example team <span aria-hidden="true">→</span></a>
+        <details class="help">
+          <summary>Where do I find these?</summary>
+          <div class="help-body">
+            <p><strong>Team ID.</strong> Open the FPL website or app and go to the <strong>Points</strong> page. The link contains <code>/entry/1234567/</code>. That number is your team ID. You can paste the whole link.</p>
+            <p><strong>League ID.</strong> Open your mini-league's standings. The link contains <code>/leagues/76543/</code>. Paste that link or the number.</p>
+            <p class="muted">In the app, use Share or copy the link from the browser version. The numbers above are examples.</p>
+          </div>
+        </details>
+      </div>
+      <p class="trust">No login, no password <span aria-hidden="true">·</span> Reads FPL's public data only <span aria-hidden="true">·</span> Free, every gameweek</p>
     </div>
 
-    <figure class="preview" aria-labelledby="preview-cap">
-      <figcaption id="preview-cap" class="preview-cap"><span>What you'll get</span><span class="preview-gw">Example · Gameweek 9</span></figcaption>
-      <div class="preview-body">
-        <div class="pv-row">
-          <span class="pv-label">Transfer 1</span>
-          <span class="pv-swap"><span class="pv-out">Calafiori</span><span aria-hidden="true" class="pv-arrow">→</span><span class="pv-in">Gabriel</span></span>
-          <span class="pv-num">+11.2<small>pts</small></span>
-        </div>
-        <p class="pv-why">Calafiori has a hip injury. Gabriel has three kind fixtures, and none of your rivals own this player.</p>
-        <div class="pv-row">
-          <span class="pv-label">Captain</span>
-          <span class="pv-swap"><span class="pv-armband" aria-hidden="true">C</span><span class="pv-in">Haaland</span><span class="pv-fix">v BHA (H)</span></span>
-          <span class="pv-num">13.0<small>xP</small></span>
-        </div>
-        <div class="pv-row">
-          <span class="pv-label">Chips</span>
-          <span class="pv-swap"><span>Keep your Triple Captain for GW15</span></span>
-        </div>
-      </div>
-    </figure>
+    <figure class="glimpse night" id="glimpse" aria-label="What you'll get: an example" hidden></figure>
   </div>
 </header>
 
-<main id="main" class="wrap" tabindex="-1">
-  <div id="status" class="status" aria-live="polite"></div>
+<main id="main" tabindex="-1">
+  <div class="wrap">
+    <div id="status" class="status" aria-live="polite"></div>
+  </div>
 
   <div id="results" hidden></div>
 
-  <section id="intro" class="intro" aria-labelledby="intro-h">
-    <h2 id="intro-h" class="sr-only">What you get</h2>
-    <ol class="intro-list">
-      <li>
-        <span class="intro-n" aria-hidden="true">01</span>
-        <h3>Transfers, explained</h3>
-        <p>Who to sell, who to buy and why, with the expected points each move adds over the next five gameweeks.</p>
-      </li>
-      <li>
-        <span class="intro-n" aria-hidden="true">02</span>
-        <h3>Captain, lineup and chips</h3>
-        <p>Your best XI and bench order, the captain pick, and whether this is the week for a chip.</p>
-      </li>
-      <li>
-        <span class="intro-n" aria-hidden="true">03</span>
-        <h3>Built for your mini-league</h3>
-        <p>Add your league to see the points target, what your rivals own and where you can gain ground.</p>
-      </li>
-    </ol>
+  <section id="intro" class="intro wrap" aria-labelledby="intro-h">
+    <div class="intro-lead">
+      <h2 id="intro-h" class="intro-title">A briefing, not a spreadsheet.</h2>
+      <p>Paste your team once. Before each deadline you get the few moves that matter most, the numbers behind them, and the reason in one plain sentence.</p>
+    </div>
+    <dl class="intro-list">
+      <div class="intro-item">
+        <dt>Transfers, explained</dt>
+        <dd>Who to sell, who to buy and why, with the expected points each move adds over the next five gameweeks, and whether it's worth a −4 hit.</dd>
+      </div>
+      <div class="intro-item">
+        <dt>Captain, lineup and chips</dt>
+        <dd>Your best XI and bench order on a pitch you can flip between your team now and after our moves, the captain pick, and whether this is the week for a chip.</dd>
+      </div>
+      <div class="intro-item">
+        <dt>Built for your mini-league</dt>
+        <dd>Add your league to see the points target, what your rivals own and which chips they still hold, and where you can gain ground.</dd>
+      </div>
+    </dl>
   </section>
-
 </main>
 
 <footer class="site-footer">
