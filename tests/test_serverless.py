@@ -183,7 +183,7 @@ def test_vercel_json_function_settings():
     cfg = _vercel()
     fn = cfg["functions"]["index.py"]
     assert fn["maxDuration"] <= 60
-    assert cfg["regions"] == ["lhr1"]
+    assert cfg["regions"] == ["iad1"]
     assert (
         "public/" in cfg["buildCommand"]
         and "src/fpl_advisor/static" in cfg["buildCommand"]

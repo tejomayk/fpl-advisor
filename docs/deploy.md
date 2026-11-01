@@ -14,7 +14,7 @@ How it fits together:
 
 | Part | Where | What it does |
 |---|---|---|
-| Website | Vercel (Hobby), `index.py` + `vercel.json` | Serves the page from Vercel's CDN and `/api/advice`, `/api/health` from one Python function in London (`lhr1`). Holds **no paid API keys** (it refuses to start if one is set) and never makes a paid call. |
+| Website | Vercel (Hobby), `index.py` + `vercel.json` | Serves the page from Vercel's CDN and `/api/advice`, `/api/health` from one Python function in Washington, D.C. (`iad1`; change `regions` in `vercel.json` to move it). Holds **no paid API keys** (it refuses to start if one is set) and never makes a paid call. |
 | Data store | Vercel Blob (private store) | `web/snapshot.json.gz` (FPL data + signals for the website) and `job/state.tar.gz` (signal caches, elite list, spend ledger). |
 | Refresh | GitHub Actions `refresh.yml`, every 30 min | `fpl-advisor refresh`: loads FPL data, refreshes odds / news / elite picks / creator room with every spend cap enforced, saves the snapshot. The **only** place paid calls happen. |
 | Elite scan | GitHub Actions `elite.yml`, monthly | `fpl-advisor discover-elite`: the ~2 hour scan for consistently good managers. Free (public FPL data only). |
@@ -29,15 +29,20 @@ missing, older than 6 hours, or from before the latest deadline, it loads FPL da
 2. **Import the repo.** Add New -> Project -> pick your fork. Vercel detects the FastAPI app in
    `index.py`; leave the build settings alone (`vercel.json` sets the build command, which copies
    `src/fpl_advisor/static/` into `public/`, the region and the function's 60 s limit). Deploy.
-3. **Create a Blob store.** In the project: Storage -> Create -> Blob -> **Private** access ->
-   connect it to the project (all environments). This adds `BLOB_READ_WRITE_TOKEN` to the
-   project's environment variables. Redeploy once so the function sees it.
+3. **Create a Blob store.** Blob stores live at the account level, not inside the project:
+   open your dashboard (vercel.com/dashboard), pick the **Storage** tab in the top bar ->
+   Create -> Blob. Choose **Private** access and the same region as the function
+   (`regions` in `vercel.json`, Washington D.C. / `iad1` by default); neither can be changed later. Then open the store's **Projects** tab -> Connect to
+   Project -> pick this project, all environments. This adds `BLOB_READ_WRITE_TOKEN` (plus
+   `BLOB_STORE_ID` and OIDC variables the app ignores) to the project. Redeploy once so the
+   function sees it. CLI alternative, from a linked checkout:
+   `vercel blob create-store fpl-advisor --access private --region iad1 --yes`.
 4. **Vercel environment variables.** Nothing else is needed. Do **not** add `ODDS_API_KEY`,
    `OPENROUTER_API_KEY` or `YOUTUBE_API_KEY` to Vercel: they belong to the GitHub job only.
 5. **GitHub secrets** (repo -> Settings -> Secrets and variables -> Actions -> New repository
    secret):
-   - `BLOB_READ_WRITE_TOKEN`: copy it from Vercel (Storage -> your store -> `.env.local` tab, or
-     the project's Environment Variables). Required; the jobs skip themselves until it is set.
+   - `BLOB_READ_WRITE_TOKEN`: copy it from the project's Settings -> Environment Variables
+     (or the store's `.env.local` snippet). Required; the jobs skip themselves until it is set.
    - `ODDS_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`: optional, each turns one source on.
    - `NTFY_TOPIC`: optional, push alerts at 80% and 100% of a spending cap.
    - Leave `FPL_NEWS_FEEDS` unset: BBC (and other feeds') terms rarely allow a public site to
