@@ -4,106 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>FPL Advisor</title>
-<meta name="description" content="Free, unofficial Fantasy Premier League advice: weekly transfers, captain and chips, each explained in plain words. Paste your FPL link to start.">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#F2F5EF" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#08110D" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Free, unofficial Fantasy Premier League advice: transfers, captain and chips for your team, each with a plain reason.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#F4F5F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A110D" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="preload" href="/static/fonts/fl-sans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/styles.css">
-<script type="module" src="/static/app.js"></script>
+  <script type="module" crossorigin src="/static/assets/index-DHzYdXux.js"></script>
+  <link rel="stylesheet" crossorigin href="/static/assets/index-BWtjKZcy.css">
+  <link rel="modulepreload" crossorigin href="/static/assets/motionFeatures-B8-93miz.js">
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<div class="masthead">
-  <div class="wrap masthead-row">
-    <a class="brand" href="/" aria-label="FPL Advisor, home">
-      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M4 7h24v18H4z" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16 7v18" stroke="currentColor" stroke-width="2.2"/><circle cx="16" cy="16" r="3.6" class="brand-dot"/></svg>
-      <span class="brand-name">FPL Advisor</span>
-    </a>
-    <p class="masthead-meta">Unofficial <span aria-hidden="true">·</span> free &amp; open source</p>
-  </div>
-</div>
-
-<header class="hero">
-  <div class="wrap hero-grid">
-    <div class="hero-copy">
-      <h1 class="hero-title">Win the week <span class="hero-title-2">before kick&#8209;off.</span></h1>
-      <p class="promise">Transfers, captain and chips for your Fantasy Premier League team. Every pick comes with a plain reason, so you learn the game as you go.</p>
-    </div>
-
-    <div class="finder-card" id="finder-panel">
-      <h2 class="finder-title">Get this week's advice</h2>
-      <form id="finder" class="finder" novalidate>
-        <div class="field">
-          <label for="team">Your team ID or FPL link</label>
-          <input id="team" name="team" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-                 placeholder="e.g. 1234567 or your FPL link" required aria-describedby="team-err">
-          <p id="team-err" class="field-err" hidden></p>
-        </div>
-        <div class="field">
-          <label for="league">Mini-league ID or link <span class="optional">optional</span></label>
-          <input id="league" name="league" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-                 placeholder="e.g. 76543 or your league link" aria-describedby="league-err league-hint">
-          <p id="league-hint" class="field-hint">Adds standings, rivals and a points target.</p>
-          <p id="league-err" class="field-err" hidden></p>
-        </div>
-        <button type="submit" id="go" class="btn btn-primary">Get my advice <span aria-hidden="true" class="btn-arrow">→</span></button>
-      </form>
-      <div class="finder-foot">
-        <a href="/?demo=1" id="demo-link" class="demo-link">See an example team <span aria-hidden="true">→</span></a>
-        <details class="help">
-          <summary>Where do I find these?</summary>
-          <div class="help-body">
-            <p><strong>Team ID.</strong> Open the FPL website or app and go to the <strong>Points</strong> page. The link contains <code>/entry/1234567/</code>. That number is your team ID. You can paste the whole link.</p>
-            <p><strong>League ID.</strong> Open your mini-league's standings. The link contains <code>/leagues/76543/</code>. Paste that link or the number.</p>
-            <p class="muted">In the app, use Share or copy the link from the browser version. The numbers above are examples.</p>
-          </div>
-        </details>
-      </div>
-      <p class="trust">No login, no password <span aria-hidden="true">·</span> Reads FPL's public data only <span aria-hidden="true">·</span> Free, every gameweek</p>
-    </div>
-
-    <figure class="glimpse night" id="glimpse" aria-label="What you'll get: an example" hidden></figure>
-  </div>
-</header>
-
-<main id="main" tabindex="-1">
-  <div class="wrap">
-    <div id="status" class="status" aria-live="polite"></div>
-  </div>
-
-  <div id="results" hidden></div>
-
-  <section id="intro" class="intro wrap" aria-labelledby="intro-h">
-    <div class="intro-lead">
-      <h2 id="intro-h" class="intro-title">A briefing, not a spreadsheet.</h2>
-      <p>Paste your team once. Before each deadline you get the few moves that matter most, the numbers behind them, and the reason in one plain sentence.</p>
-    </div>
-    <dl class="intro-list">
-      <div class="intro-item">
-        <dt>Transfers, explained</dt>
-        <dd>Who to sell, who to buy and why, with the expected points each move adds over the next five gameweeks, and whether it's worth a −4 hit.</dd>
-      </div>
-      <div class="intro-item">
-        <dt>Captain, lineup and chips</dt>
-        <dd>Your best XI and bench order on a pitch you can flip between your team now and after our moves, the captain pick, and whether this is the week for a chip.</dd>
-      </div>
-      <div class="intro-item">
-        <dt>Built for your mini-league</dt>
-        <dd>Add your league to see the points target, what your rivals own and which chips they still hold, and where you can gain ground.</dd>
-      </div>
-    </dl>
-  </section>
-</main>
-
-<footer class="site-footer">
-  <div class="wrap">
-    <p class="footer-brand">FPL Advisor</p>
-    <p><strong>Unofficial. Not affiliated with the Premier League or Fantasy Premier League.</strong></p>
-    <p>Open-source advice from public FPL data. Expected points are estimates, not promises. Always check team news before the deadline.</p>
-  </div>
-</footer>
+<div id="root"></div>
+<noscript><p style="padding:24px;font-family:system-ui">FPL Advisor needs JavaScript to show your advice.</p></noscript>
 </body>
 </html>

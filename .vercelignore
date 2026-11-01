@@ -23,3 +23,5 @@ Dockerfile
 docker-entrypoint.sh
 .dockerignore
 GOALS.md
+# Front-end source: its build is already in src/fpl_advisor/static/
+frontend

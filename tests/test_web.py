@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
+from conftest import page_assets
 from fastapi.testclient import TestClient
 
 from fpl_advisor import web
@@ -162,3 +165,29 @@ def test_alert_routes_are_off_unless_enabled(make_client, monkeypatch):
     monkeypatch.setenv("FPL_ALERTS", "1")
     c = make_client(FailingClient("x"))
     assert c.post("/api/alerts/status", json={}).status_code != 404
+
+
+def test_page_and_built_assets_are_served_with_security_headers(make_client):
+    """The React build in static/ is what `/` serves: every file it loads exists and carries
+    the same CSP, and the page itself has no inline script (the CSP forbids one)."""
+    c = make_client(FailingClient("x"))
+    page = c.get("/")
+    assert page.status_code == 200 and '<div id="root">' in page.text
+    assert (
+        page.headers["content-security-policy"]
+        == web.SECURITY_HEADERS["Content-Security-Policy"]
+    )
+    scripts = re.findall(r"<script\b[^>]*>", page.text)
+    assert scripts and all(
+        'src="/static/' in s for s in scripts
+    )  # no inline or remote script
+    assert "http://" not in page.text and "https://" not in page.text  # no CDN
+    assets = page_assets(page.text)
+    assert any(a.endswith(".js") for a in assets) and any(
+        a.endswith(".css") for a in assets
+    )
+    for path in [*assets, "/static/sample_advice.json"]:
+        r = c.get(path)
+        assert r.status_code == 200, path
+        for k, v in web.SECURITY_HEADERS.items():
+            assert r.headers[k.lower()] == v

@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* Font: FL Sans is a Latin subset of Mona Sans (by GitHub, SIL Open Font License 1.1, see
+   /static/fonts/OFL-MonaSans.txt). Renamed because it is a modified (subset) version and the
+   original has Reserved Font Names. */
+@font-face {
+  font-family: "FL Sans";
+  src: url("/static/fonts/fl-sans.woff2") format("woff2");
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-display: swap;
+}
+
+@theme {
+  --breakpoint-desk: 68.75rem;
+}
+
+@theme inline {
+  --font-sans: "FL Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-bg: var(--c-bg);
+  --color-panel: var(--c-panel);
+  --color-raised: var(--c-raised);
+  --color-line: var(--c-line);
+  --color-line-2: var(--c-line-2);
+  --color-fg: var(--c-fg);
+  --color-fg-2: var(--c-fg-2);
+  --color-fg-3: var(--c-fg-3);
+  --color-grass: var(--c-grass);
+  --color-grass-ink: var(--c-grass-ink);
+  --color-grass-soft: var(--c-grass-soft);
+  --color-on-grass: var(--c-on-grass);
+  --color-red: var(--c-red);
+  --color-red-soft: var(--c-red-soft);
+  --color-amber: var(--c-amber);
+  --color-amber-soft: var(--c-amber-soft);
+  --color-amber-dot: var(--c-amber-dot);
+  --color-scrim: var(--c-scrim);
+}
+
+/* Light. A warm paper white, ink that leans green. */
+:root {
+  color-scheme: light;
+  --c-bg: #f3f4ef;
+  --c-panel: #ffffff;
+  --c-raised: #e9ece5;
+  --c-line: rgb(16 28 20 / 0.08);
+  --c-line-2: rgb(16 28 20 / 0.14);
+  --c-fg: #0e1712;
+  --c-fg-2: #5a685f;
+  --c-fg-3: #8d9890;
+  --c-grass: #1f8f4e;
+  --c-grass-ink: #18793f;
+  --c-grass-soft: rgb(31 143 78 / 0.1);
+  --c-on-grass: #ffffff;
+  --c-red: #c4412b;
+  --c-red-soft: rgb(196 65 43 / 0.1);
+  --c-amber: #a46500;
+  --c-amber-soft: rgb(164 101 0 / 0.1);
+  --c-scrim: rgb(10 18 13 / 0.32);
+  --c-thumb: #ffffff;
+  --c-amber-dot: #e09a12;
+
+  --pitch-a: #1f6e43;
+  --pitch-b: #23784a;
+  --pitch-line: rgb(255 255 255 / 0.22);
+  --pitch-edge: rgb(0 0 0 / 0.08);
+  --bench: #e4e8e0;
+  --plate: rgb(9 16 12 / 0.78);
+  --shadow-sheet: 0 -1px 0 rgb(16 28 20 / 0.04), 0 24px 64px -12px rgb(16 28 20 / 0.28);
+}
+
+/* Dark. Deep green-black, grass accent. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --c-bg: #0a110d;
+    --c-panel: #111a15;
+    --c-raised: #17221c;
+    --c-line: rgb(226 238 230 / 0.07);
+    --c-line-2: rgb(226 238 230 / 0.13);
+    --c-fg: #ecf1ed;
+    --c-fg-2: #93a299;
+    --c-fg-3: #5d6c63;
+    --c-grass: #2fae68;
+    --c-grass-ink: #4cc583;
+    --c-grass-soft: rgb(47 174 104 / 0.13);
+    --c-on-grass: #03130a;
+    --c-red: #f07059;
+    --c-red-soft: rgb(240 112 89 / 0.13);
+    --c-amber: #e7b04b;
+    --c-amber-soft: rgb(231 176 75 / 0.13);
+    --c-scrim: rgb(0 0 0 / 0.55);
+    --c-thumb: #2a3730;
+    --c-amber-dot: #e7b04b;
+
+    --pitch-a: #10301e;
+    --pitch-b: #133622;
+    --pitch-line: rgb(255 255 255 / 0.1);
+    --pitch-edge: rgb(255 255 255 / 0.05);
+    --bench: #0f1913;
+    --plate: rgb(5 10 7 / 0.72);
+    --shadow-sheet: 0 0 0 1px rgb(226 238 230 / 0.06), 0 24px 80px -12px rgb(0 0 0 / 0.7);
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--c-bg);
+    color: var(--c-fg);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-optical-sizing: auto;
+    overflow-x: hidden;
+    min-height: 100dvh;
+  }
+  ::selection {
+    background: var(--c-grass-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--c-grass);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .num {
+    font-family: var(--font-sans);
+  }
+  .wide-tight {
+    font-stretch: 92%;
+  }
+  .pitch {
+    background:
+      repeating-linear-gradient(
+        180deg,
+        var(--pitch-a) 0,
+        var(--pitch-a) 10%,
+        var(--pitch-b) 10%,
+        var(--pitch-b) 20%
+      );
+  }
+  .scroll-thin {
+    scrollbar-width: thin;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

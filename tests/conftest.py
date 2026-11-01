@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
@@ -176,3 +177,12 @@ def pick_squad(world: World, prices_by_pos=None) -> list[int]:
             per_club[p.team] = per_club.get(p.team, 0) + 1
             got += 1
     return squad
+
+
+_ASSET_RE = re.compile(r"""(?:src|href)="(/static/[^"]+)\"""")
+
+
+def page_assets(html: str) -> list[str]:
+    """The /static/ files the built index.html loads (script, stylesheet, fonts, icon).
+    The front end's file names carry a content hash, so tests read them from the page."""
+    return _ASSET_RE.findall(html)

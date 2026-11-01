@@ -15,7 +15,7 @@ from typing import ClassVar
 from urllib.parse import quote, urlsplit
 
 import pytest
-from conftest import make_world
+from conftest import make_world, page_assets
 from fastapi.testclient import TestClient
 
 from fpl_advisor import cli, creators, keys, news, odds, web
@@ -245,7 +245,8 @@ def test_web_responses_never_contain_keys_and_make_no_paid_calls(site, caplog):
         for path in (
             "/api/health",
             "/",
-            "/static/app.js",
+            *page_assets((web.STATIC_DIR / "index.html").read_text()),
+            "/static/sample_advice.json",
             "/api/advice?team=404",  # FPL error whose message holds a key
             "/api/advice?team=abc",
             "/api/advice?team=1&risk=yolo",

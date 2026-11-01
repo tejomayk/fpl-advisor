@@ -68,7 +68,7 @@ missing, older than 6 hours, or from before the latest deadline, it loads FPL da
 ### Check it works
 
 - `curl https://<your-app>.vercel.app/api/health` gives `{"ok":true,"world_loaded":...,"mode":"serverless"}`.
-- `curl -I https://<your-app>.vercel.app/static/app.js` shows `content-security-policy` and
+- `curl -I https://<your-app>.vercel.app/static/icon.svg` shows `content-security-policy` and
   `x-content-type-options: nosniff` (headers come from `vercel.json` and apply to static files too).
 - `curl "https://<your-app>.vercel.app/api/advice?team=<your team id>"` returns JSON. Its
   `sources` field lists the signals in use once the refresh job has run.

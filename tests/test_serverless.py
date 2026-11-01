@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from conftest import PAID_HOSTS, make_world
+from conftest import PAID_HOSTS, make_world, page_assets
 from fakeblob import TOKEN, FakeBlob
 from fastapi.testclient import TestClient
 from test_no_leaks import FakeFPL
@@ -160,8 +160,15 @@ def test_entrypoint_routes_api_and_static(monkeypatch, tmp_path):
     assert http.get("/api/health").json()["mode"] == "serverless"
     assert http.get("/api/advice", params={"team": 1}).status_code == 200
     assert http.get("/api/advice", params={"team": "x"}).status_code == 422
-    assert "<html" in http.get("/").text.lower()
-    assert http.get("/static/app.js").status_code == 200
+    page = http.get("/")
+    assert "<html" in page.text.lower()
+    assets = page_assets(page.text)
+    assert any(a.endswith(".js") for a in assets) and any(
+        a.endswith(".css") for a in assets
+    )
+    for path in assets:  # the built script, stylesheet, fonts and icon
+        assert http.get(path).status_code == 200, path
+    assert http.get("/static/sample_advice.json").status_code == 200  # the ?demo=1 page
     assert http.get("/no-such-page").status_code == 404
 
 
