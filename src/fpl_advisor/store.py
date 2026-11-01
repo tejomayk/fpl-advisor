@@ -1,4 +1,4 @@
-"""Where shared state lives: local files (default) or Vercel Blob (when BLOB_READ_WRITE_TOKEN is set).
+"""Where shared state lives: local files (default) or Vercel Blob (BLOB_READ_WRITE_TOKEN or BLOB_STORE_ID).
 
 One small interface (`get`/`put` bytes or JSON by key, plus `delete`), two backends:
 
@@ -7,6 +7,11 @@ One small interface (`get`/`put` bytes or JSON by key, plus `delete`), two backe
 - `BlobStore(token)`: Vercel Blob over its REST API (standard library `urllib`, no SDK). Blobs are
   written with **private** access, so nothing (in particular the spend ledger) is publicly
   readable; every read sends the token.
+- `BlobStore.oidc(store_id)`: the same store reached the way Vercel now connects stores to a
+  project: `BLOB_STORE_ID` plus the short-lived OIDC token Vercel hands each function request in
+  the `x-vercel-oidc-token` header (the website puts it in `request_oidc_token`), or
+  `VERCEL_OIDC_TOKEN` outside a request. No long-lived token sits in the Vercel project. The
+  GitHub job runs outside Vercel, so it still uses the read-write token.
 
 What is stored, by key:
 
@@ -42,14 +47,22 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 log = logging.getLogger(__name__)
 
 TOKEN_VAR = "BLOB_READ_WRITE_TOKEN"
+STORE_ID_VAR = "BLOB_STORE_ID"  # set by Vercel when a store is connected; not a secret
+OIDC_VAR = "VERCEL_OIDC_TOKEN"
+OIDC_HEADER = "x-vercel-oidc-token"
+# The OIDC token of the request being served (set by the website per request).
+request_oidc_token: ContextVar[str | None] = ContextVar(
+    "request_oidc_token", default=None
+)
 BLOB_API = "https://vercel.com/api/blob"
 BLOB_API_VERSION = "13"  # what the official @vercel/blob SDK sends
 TIMEOUT = 30
@@ -210,11 +223,32 @@ class BlobStore(Store):
     kind = "blob"
 
     def __init__(self, token: str, opener=None, sleep=time.sleep):
-        self._token = token
+        self._token: Callable[[], str | None] = lambda: token
+        self._oidc = False
         self.store_id = _store_id(token)
         self.host = f"https://{self.store_id}.private.blob.vercel-storage.com"
         self._open = opener or urllib.request.urlopen
         self._sleep = sleep
+
+    @classmethod
+    def oidc(
+        cls, store_id: str, token=None, opener=None, sleep=time.sleep
+    ) -> BlobStore:
+        """Reach the store with Vercel's OIDC token. `token` returns the current one (default:
+        this request's header, else VERCEL_OIDC_TOKEN); it is looked up on every call because
+        Vercel rotates it."""
+        sid = store_id.strip().removeprefix("store_").lower()
+        if not sid or not sid.isalnum():
+            raise StoreError(f"{STORE_ID_VAR} is not a Blob store id")
+        st = cls.__new__(cls)
+        st._token = token or _current_oidc_token
+        st._oidc = True
+        st._store_header = store_id.strip().removeprefix("store_")
+        st.store_id = sid
+        st.host = f"https://{sid}.private.blob.vercel-storage.com"
+        st._open = opener or urllib.request.urlopen
+        st._sleep = sleep
+        return st
 
     def __repr__(self) -> str:  # never show the token
         return f"BlobStore(store_id={self.store_id!r})"
@@ -222,13 +256,17 @@ class BlobStore(Store):
     def _call(self, method: str, url: str, data: bytes | None = None, headers=None):
         """(status, headers, body). A 404 is returned, not raised. Other failures are retried,
         then raised as StoreError naming only the status (URL and headers carry the token)."""
+        token = (self._token() or "").strip()
+        if not token:
+            raise StoreError(
+                f"Vercel Blob {method} failed (no OIDC token for this request)"
+            )
+        auth = {"authorization": f"Bearer {token}"}
+        if self._oidc:  # an OIDC token doesn't name the store, so say which one
+            auth["x-vercel-blob-store-id"] = self._store_header
         last = "unknown error"
         for attempt in range(RETRIES):
-            h = {
-                "authorization": f"Bearer {self._token}",
-                "x-api-version": BLOB_API_VERSION,
-                **(headers or {}),
-            }
+            h = {**auth, "x-api-version": BLOB_API_VERSION, **(headers or {})}
             req = urllib.request.Request(url, data=data, method=method, headers=h)
             try:
                 with self._open(req, timeout=TIMEOUT) as resp:
@@ -311,12 +349,20 @@ class BlobStore(Store):
 # ---------------------------------------------------------------- choosing one
 
 
+def _current_oidc_token() -> str | None:
+    return request_oidc_token.get() or os.environ.get(OIDC_VAR)
+
+
 def default(env: Mapping[str, str] | None = None) -> Store:
-    """Blob when BLOB_READ_WRITE_TOKEN is set, otherwise files under FPL_DATA_DIR."""
+    """Blob when BLOB_READ_WRITE_TOKEN is set, else Blob over OIDC when BLOB_STORE_ID is set (a
+    Vercel project with a connected store), otherwise files under FPL_DATA_DIR."""
     env = os.environ if env is None else env
     token = (env.get(TOKEN_VAR) or "").strip()
     if token:
         return BlobStore(token)
+    store_id = (env.get(STORE_ID_VAR) or "").strip()
+    if store_id:
+        return BlobStore.oidc(store_id)
     return LocalStore(env.get("FPL_DATA_DIR") or "data")
 
 

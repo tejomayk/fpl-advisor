@@ -358,6 +358,8 @@ def create_app(
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        if serverless:  # Vercel's per-request OIDC token, for reading the Blob store
+            store_mod.request_oidc_token.set(request.headers.get(store_mod.OIDC_HEADER))
         response = await call_next(request)
         for k, v in SECURITY_HEADERS.items():
             response.headers.setdefault(k, v)

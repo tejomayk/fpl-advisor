@@ -31,18 +31,25 @@ missing, older than 6 hours, or from before the latest deadline, it loads FPL da
    `src/fpl_advisor/static/` into `public/`, the region and the function's 60 s limit). Deploy.
 3. **Create a Blob store.** Blob stores live at the account level, not inside the project:
    open your dashboard (vercel.com/dashboard), pick the **Storage** tab in the top bar ->
-   Create -> Blob. Choose **Private** access and the same region as the function
-   (`regions` in `vercel.json`, Washington D.C. / `iad1` by default); neither can be changed later. Then open the store's **Projects** tab -> Connect to
-   Project -> pick this project, all environments. This adds `BLOB_READ_WRITE_TOKEN` (plus
-   `BLOB_STORE_ID` and OIDC variables the app ignores) to the project. Redeploy once so the
-   function sees it. CLI alternative, from a linked checkout:
+   Create -> Blob. Choose **Private** access and the same region as the function (`regions` in
+   `vercel.json`, Washington D.C. / `iad1` by default); neither can be changed later. Then open
+   the store's **Projects** tab -> Connect to Project -> pick this project, all environments.
+   Vercel adds `BLOB_STORE_ID` (and `BLOB_WEBHOOK_PUBLIC_KEY`) to the project. That is all the
+   website needs: it signs each Blob read with the short-lived OIDC token Vercel gives every
+   request, so no long-lived token sits in Vercel. Redeploy once (Deployments -> ... ->
+   Redeploy) so the function sees `BLOB_STORE_ID`. CLI alternative, from a linked checkout:
    `vercel blob create-store fpl-advisor --access private --region iad1 --yes`.
 4. **Vercel environment variables.** Nothing else is needed. Do **not** add `ODDS_API_KEY`,
    `OPENROUTER_API_KEY` or `YOUTUBE_API_KEY` to Vercel: they belong to the GitHub job only.
 5. **GitHub secrets** (repo -> Settings -> Secrets and variables -> Actions -> New repository
    secret):
-   - `BLOB_READ_WRITE_TOKEN`: copy it from the project's Settings -> Environment Variables
-     (or the store's `.env.local` snippet). Required; the jobs skip themselves until it is set.
+   - `BLOB_READ_WRITE_TOKEN`: required; the jobs skip themselves until it is set. GitHub runs
+     outside Vercel, so it needs the store's long-lived read-write token, which the dashboard no
+     longer shows. Fetch it straight into GitHub with the script (it never prints the token):
+     create a Vercel access token with a 1-day expiry (vercel.com/account/settings/tokens), then
+     from this repo with `gh` signed in run
+     `scripts/set_blob_secret.sh <store_id>` (the store id is on the store's Settings page),
+     paste the access token when asked, and delete the access token afterwards.
    - `ODDS_API_KEY`, `OPENROUTER_API_KEY`, `YOUTUBE_API_KEY`: optional, each turns one source on.
    - `NTFY_TOPIC`: optional, push alerts at 80% and 100% of a spending cap.
    - Leave `FPL_NEWS_FEEDS` unset: BBC (and other feeds') terms rarely allow a public site to

@@ -233,3 +233,18 @@ def test_workflows_are_single_writer_and_pinned():
     assert "timeout-minutes: 330" in (wf / "elite.yml").read_text()
     secrets_wf = (wf / "secrets.yml").read_text()
     assert "push:" in secrets_wf and "pull_request:" in secrets_wf
+
+
+def test_site_reads_blob_with_the_requests_oidc_token(paid_wire):
+    from fakeblob import OIDC_TOKEN, STORE_ID
+
+    w = future_world()
+    fake, _writer = _store_with_snapshot(w)
+    st = store.BlobStore.oidc("store_" + STORE_ID, opener=fake, sleep=lambda s: None)
+    http, app = _site(st)
+    r = http.get(
+        "/api/advice", params={"team": 1}, headers={store.OIDC_HEADER: OIDC_TOKEN}
+    )
+    assert r.status_code == 200, r.text
+    assert app.state.worlds.client.bootstraps == 0  # served from the stored snapshot
+    assert store.request_oidc_token.get() is None  # nothing leaks out of the request

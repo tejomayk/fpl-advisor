@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 import pytest
-from fakeblob import STORE_ID, TOKEN, FakeBlob
+from fakeblob import OIDC_TOKEN, STORE_ID, TOKEN, FakeBlob
 
 from fpl_advisor import keys, store
 
@@ -16,11 +16,15 @@ def blob():
     return fake, store.BlobStore(TOKEN, opener=fake, sleep=lambda s: None)
 
 
-@pytest.fixture(params=["local", "blob"])
+@pytest.fixture(params=["local", "blob", "blob-oidc"])
 def any_store(request, tmp_path):
     if request.param == "local":
         return store.LocalStore(tmp_path / "data")
     fake = FakeBlob()
+    if request.param == "blob-oidc":
+        return store.BlobStore.oidc(
+            "store_" + STORE_ID, lambda: OIDC_TOKEN, opener=fake, sleep=lambda s: None
+        )
     return store.BlobStore(TOKEN, opener=fake, sleep=lambda s: None)
 
 
@@ -174,3 +178,41 @@ def test_local_job_state_is_used_in_place(tmp_path):
     with store.job_state(st) as js:
         js.pull()
         assert js.root == tmp_path and not js.remote and js.push() is False
+
+
+def test_default_uses_oidc_when_vercel_connected_the_store(monkeypatch):
+    st = store.default({"BLOB_STORE_ID": "store_" + STORE_ID.upper()})
+    assert isinstance(st, store.BlobStore) and st.store_id == STORE_ID
+    assert st.host == f"https://{STORE_ID}.private.blob.vercel-storage.com"
+    # a read-write token, when present, wins
+    assert (
+        store.default(
+            {"BLOB_STORE_ID": "store_x", "BLOB_READ_WRITE_TOKEN": TOKEN}
+        ).store_id
+        == STORE_ID
+    )
+
+
+def test_oidc_token_comes_from_the_request_then_the_env(monkeypatch):
+    fake = FakeBlob()
+    st = store.BlobStore.oidc(STORE_ID, opener=fake, sleep=lambda s: None)
+    monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
+    with pytest.raises(store.StoreError, match="no OIDC token"):
+        st.get("web/x.json")
+    assert fake.requests == []  # nothing sent without a token
+    tok = store.request_oidc_token.set(OIDC_TOKEN)
+    try:
+        st.put("web/x.json", b"1")
+        assert st.get("web/x.json") == b"1"
+    finally:
+        store.request_oidc_token.reset(tok)
+    monkeypatch.setenv("VERCEL_OIDC_TOKEN", OIDC_TOKEN)
+    assert st.get("web/x.json") == b"1"
+    sent = {k.lower(): v for k, v in fake.requests[0].header_items()}
+    assert sent["x-vercel-blob-store-id"] == STORE_ID
+    assert OIDC_TOKEN not in repr(st)
+
+
+def test_bad_store_id_is_refused():
+    with pytest.raises(store.StoreError):
+        store.BlobStore.oidc("store_../evil")

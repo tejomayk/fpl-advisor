@@ -145,7 +145,7 @@ Open http://localhost:8000. Add `/?demo=1` to see sample data without calling FP
 | `FPL_CREATORS` | unset | Change the creator list: `Handle=<FPL entry id>`, `+Handle` to add, `-Handle` to remove, comma-separated |
 | `ELITE_POOL_SIZE` | `50000` | How deep in this season's overall standings to search for consistently good managers |
 | `ELITE_MAX_RPS` | `8` | Most FPL requests per second during that search |
-| `BLOB_READ_WRITE_TOKEN` | unset | Vercel Blob token. When set, `fpl-advisor refresh`, `discover-elite` and `usage` keep their state (signal caches, elite list, spend ledger) and the website's snapshot in that private Blob store instead of `FPL_DATA_DIR`. A secret: set it in Vercel and as a GitHub Actions secret, never in a file you commit |
+| `BLOB_READ_WRITE_TOKEN` | unset | Vercel Blob token. When set, `fpl-advisor refresh`, `discover-elite` and `usage` keep their state (signal caches, elite list, spend ledger) and the website's snapshot in that private Blob store instead of `FPL_DATA_DIR`. A secret: set it as a GitHub Actions secret (`scripts/set_blob_secret.sh` fetches it), never in a file you commit. The website on Vercel doesn't need it: with `BLOB_STORE_ID` set (Vercel adds it when you connect the store) it reads Blob with Vercel's per-request OIDC token |
 | `FPL_SERVERLESS` | unset (on automatically when Vercel sets `VERCEL=1`) | Website reads the snapshot the refresh job saved, runs no background work and refuses to start if a paid API key is set |
 | `FPL_CACHE_DIR` | `.cache` | FPL response cache for `fpl-advisor refresh` and `discover-elite` |
 

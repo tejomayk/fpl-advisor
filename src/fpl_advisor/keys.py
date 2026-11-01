@@ -36,6 +36,7 @@ SECRET_ENV_VARS = (
     "YOUTUBE_API_KEY",
     "NTFY_TOKEN",
     "BLOB_READ_WRITE_TOKEN",
+    "VERCEL_OIDC_TOKEN",
 )
 
 # Everything the repo-root `.env` may set. Other lines are ignored.

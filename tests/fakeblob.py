@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 # Built at runtime so no file holds a token-shaped string.
 STORE_ID = "fakestore123"
 TOKEN = "_".join(["vercel", "blob", "rw", STORE_ID, "s3cr3t" + "Q" * 20])
+OIDC_TOKEN = "eyJ" + "oidc" * 10  # what Vercel hands a function request
 
 
 class _Resp(io.BytesIO):
@@ -51,7 +52,16 @@ class FakeBlob:
         self.requests.append(req)
         url = req.full_url
         headers = {k.lower(): v for k, v in req.header_items()}
-        if headers.get("authorization") != f"Bearer {TOKEN}":
+        auth = headers.get("authorization")
+        oidc = auth == f"Bearer {OIDC_TOKEN}"
+        if auth != f"Bearer {TOKEN}" and not oidc:
+            raise _err(url, 403)
+        # An OIDC token doesn't name the store; the API needs it as a header.
+        if (
+            oidc
+            and urlsplit(url).hostname == "vercel.com"
+            and headers.get("x-vercel-blob-store-id") != STORE_ID
+        ):
             raise _err(url, 403)
         if self.fail_next:
             f = self.fail_next.pop(0)
