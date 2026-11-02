@@ -713,6 +713,12 @@ def captain_reason_league(a: Advice) -> str | None:
     return c.reason_captain if c and c.switched else None
 
 
+def _whole_pct(p: float) -> float:
+    # Whole percents, rounded as the sentence rounds them, so the site's bars and the
+    # sentence never disagree (Python rounds 20.5 to 20, JavaScript to 21).
+    return round(p, 3) if p < 0.01 or p > 0.99 else round(p * 100) / 100
+
+
 def league_win_odds(a: Advice) -> dict | None:
     """{"me": P(you finish 1st), "rows": [{"entry", "name", "p_first"}], "sentence"}."""
     c = a.league_choice
@@ -721,13 +727,13 @@ def league_win_odds(a: Advice) -> dict | None:
     o = c.odds
     rows = sorted(
         (
-            {"entry": int(k), "name": o.labels[k], "p_first": round(o.p_first[k], 3)}
+            {"entry": int(k), "name": o.labels[k], "p_first": _whole_pct(o.p_first[k])}
             for k in o.keys
         ),
         key=lambda r: -r["p_first"],
     )
     return {
-        "me": round(o.p_first[c.me], 3),
+        "me": _whole_pct(o.p_first[c.me]),
         "rows": rows,
         "sentence": describe_odds(o, c.me),
     }

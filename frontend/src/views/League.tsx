@@ -73,7 +73,8 @@ function Hero({ L, d }: { L: LeagueT; d: Advice }) {
 }
 
 /** "22%", or "<1%" for a chance that is real but tiny. */
-const chance = (p?: number) => (!isNum(p) ? "–" : p > 0 && p < 0.005 ? "<1%" : pct(p));
+const chance = (p?: number) =>
+  !isNum(p) ? "–" : p > 0 && p < 0.01 ? "<1%" : p > 0.99 && p < 1 ? ">99%" : pct(p);
 
 function WinOdds({ L, d, className = "" }: { L: LeagueT; d: Advice; className?: string }) {
   const w = L.win_odds;
@@ -93,7 +94,15 @@ function WinOdds({ L, d, className = "" }: { L: LeagueT; d: Advice; className?: 
     >
       <div className="flex items-end gap-3 pt-2">
         <span className="num text-[64px] leading-[0.9] font-semibold tracking-[-0.03em] text-grass-ink">
-          <CountUp value={Math.round(w.me * 100)} decimals={0} />%
+          {w.me > 0 && w.me < 0.01 ? (
+            "<1%"
+          ) : w.me > 0.99 && w.me < 1 ? (
+            ">99%"
+          ) : (
+            <>
+              <CountUp value={Math.round(w.me * 100)} decimals={0} />%
+            </>
+          )}
         </span>
         <span className="pb-1.5 text-[15px] text-fg-2">You</span>
       </div>

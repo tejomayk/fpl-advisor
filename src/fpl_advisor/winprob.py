@@ -614,7 +614,7 @@ def entrants_from_league(
         out.append(
             Entrant(
                 key=m.entry,
-                label=m.team_name or m.manager,
+                label=m.manager or m.team_name,
                 total=m.total,
                 picks=picks,
                 gws_played=m.gws_played,
