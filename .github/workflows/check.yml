@@ -1,0 +1,31 @@
+# Runs scripts/check.sh (secrets, lint, format, tests, front-end typecheck) on every PR and on main.
+# A PR merges only when this is green.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      # Node comes preinstalled on ubuntu-latest; check.sh installs the front end's locked packages.
+      - name: Run all checks
+        run: scripts/check.sh
