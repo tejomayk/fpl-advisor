@@ -253,7 +253,9 @@ PAST_FIELDS = (
     "yellow_cards",
     "total_points",
     "defensive_contribution",
+    "expected_goals_conceded",
 )
+PAST_FIELDS_FLOAT = HISTORY_FIELDS_FLOAT + ("expected_goals_conceded",)
 
 
 def _read(path: Path) -> list[dict]:
@@ -433,7 +435,7 @@ def load_season(
             if pid in players and pr and _num(pr.get("minutes"), int) > 0:
                 # Same types as the FPL API's history_past: counts are ints, xG/xA strings.
                 past[pid] = {
-                    k: (pr[k] if k in HISTORY_FIELDS_FLOAT else _num(pr[k], int))
+                    k: (pr[k] if k in PAST_FIELDS_FLOAT else _num(pr[k], int))
                     for k in PAST_FIELDS
                     if k in pr
                 }
