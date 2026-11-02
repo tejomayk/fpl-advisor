@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
+from . import robust
 from . import rules as R
 from .api import FPLClient
 from .chips import ChipAdvice, advise_chips
@@ -18,7 +19,9 @@ from .league import (
     ownership_multiplier,
     risk_lambda,
 )
-from .model import project
+from .leaguechoice import LeagueChoice
+from .leaguechoice import choose as choose_for_league
+from .model import PointsDist, project_dist
 from .optimise import (
     BENCH_BOOST,
     FREE_HIT,
@@ -38,6 +41,7 @@ from .squad import (
     initial_squad,
     load_squad,
 )
+from .winprob import describe as describe_odds
 from .world import Event, World, load_world
 
 # Weeks after the horizon used to value the squad left at the end.
@@ -64,6 +68,14 @@ class Advice:
     signals: Signals = field(default_factory=Signals)  # odds, team news, elite managers
     # What this week's moves are worth against making none, in the plan's own terms (after hits).
     value_of_moves: float | None = None
+    # Stage 3 (robust.py): P(this week's best moves beat making none); how sure we are of the
+    # transfer advice (that P when it says move, 1 - P when it says hold); one per move.
+    p_beats_hold: float | None = None
+    confidence: float | None = None
+    move_confidence: list = field(default_factory=list)
+    robust_note: str | None = None  # why the planner's first choice was changed
+    # Stage 4 (leaguechoice.py): the choice made on P(finish 1st), when a league is set.
+    league_choice: LeagueChoice | None = None
 
     # ---- helpers
     def name(self, pid: int) -> str:
@@ -156,6 +168,24 @@ def build_advice(
         horizon_len=horizon_len,
         signals=signals,
     )
+    choice = None
+    if league and not initial:
+        try:
+            choice = choose_for_league(
+                league,
+                world,
+                dec.dists,
+                dec.xp,
+                dec.horizon,
+                dec.plan,
+                {"hold": dec.hold, **dec.alternatives},
+            )
+        except (ValueError, KeyError) as e:  # advice still works without it
+            league_note = f"League odds skipped: {e}"
+        if choice and choice.switched and choice.plan.buys != dec.plan.buys:
+            restate_confidence(dec, choice.plan, world)
+        if choice and choice.switched:
+            dec.plan = choice.plan
     horizon, xp, plan, chips, chip_now = (
         dec.horizon,
         dec.xp,
@@ -192,6 +222,11 @@ def build_advice(
     advice.initial = initial
     advice.signals = signals
     advice.value_of_moves = dec.value_of_moves
+    advice.p_beats_hold = dec.p_beats_hold
+    advice.confidence = dec.confidence
+    advice.move_confidence = dec.move_confidence
+    advice.robust_note = dec.robust_note
+    advice.league_choice = choice
     if (
         initial
     ):  # there's no existing squad, so the note about unseen transfers doesn't apply
@@ -215,6 +250,22 @@ class Decision:
     # The plan's value minus the best plan that makes no move this week: what acting now is worth,
     # after hits and the free transfer it uses. None when there is nothing to compare.
     value_of_moves: float | None = None
+    dists: dict[int, dict[int, PointsDist]] = field(default_factory=dict)
+    # The best plan with no move this week (same chip), when it was solved.
+    hold: Plan | None = None
+    # Other plans considered this week, by name: "planner" (its first choice, when the
+    # robustness rule turned it down) and "no_hit" (the best plan without a hit).
+    alternatives: dict[str, Plan] = field(default_factory=dict)
+    # P(the planner's chosen moves beat making none), when there were moves to test.
+    p_beats_hold: float | None = None
+    # P(the plan followed is the right call): p_beats_hold if it moves, 1 - that if it holds.
+    confidence: float | None = None
+    # Per move of the plan followed: P(the swap gains more than its share of any hit).
+    move_confidence: list[robust.Confidence] = field(default_factory=list)
+    # Why the planner's first choice was changed, in plain words (None when it wasn't).
+    robust_note: str | None = None
+    p_hit: float | None = None  # P(the plan with a hit beats the best plan without one)
+    multiplier: dict[int, float] | None = None
 
 
 def decide(
@@ -235,13 +286,19 @@ def decide(
     This is the whole decision path `build_advice` uses; scripts/season_sim.py replays past
     seasons through it, so a change here is measured on season totals. `ft_cap` and
     `keep_fts_on_chip` are the season's free-transfer rules (the sim replays older seasons).
+
+    With `compare_hold`, this week's moves are stress-tested against forecast error (robust.py):
+    a hit is only taken when the plan with it beats the best plan without one in at least
+    `robust.HIT_CONFIDENCE` of cases, and moves are only made when they beat making none in at
+    least `robust.MOVE_CONFIDENCE`.
     """
     ev = world.next_event
     last_gw = max(e.id for e in world.events)
     horizon = list(range(ev.id, min(last_gw, ev.id + horizon_len - 1) + 1))
     # Project a few weeks past the horizon too: the squad left at the end is valued on them.
     window = list(range(ev.id, min(last_gw, horizon[-1] + TERMINAL_LOOKAHEAD) + 1))
-    xp = project(world, window, signals=signals)
+    dists = project_dist(world, window, signals=signals)
+    xp = {pid: {gw: d.mean for gw, d in v.items()} for pid, v in dists.items()}
     after = window[len(horizon) :]
     terminal = (
         {p: sum(xp[p].get(g, 0.0) for g in after) / len(after) for p in xp}
@@ -283,21 +340,108 @@ def decide(
     )
     chip_now = next((c for c in chips if c.play_now), None)
     plan = chip_now.plan if chip_now and chip_now.plan is not None else base
-    value = None
+    dec = Decision(
+        window,
+        horizon,
+        xp,
+        base,
+        plan,
+        chips,
+        chip_now,
+        dists=dists,
+        multiplier=multiplier,
+    )
     now_chip = plan.chip_now
-    if (
-        compare_hold
-        and not initial
-        and plan.buys
-        and now_chip not in (WILDCARD, FREE_HIT)
-    ):
-        same_chip = {
-            "triple_captain_gw": horizon[0] if now_chip == TRIPLE_CAPTAIN else None,
-            "bench_boost_gw": horizon[0] if now_chip == BENCH_BOOST else None,
-        }
-        hold = plan_with(max_transfers=0, **same_chip)
-        value = round(plan.objective - hold.objective, 1)
-    return Decision(window, horizon, xp, base, plan, chips, chip_now, value)
+    if not compare_hold or initial or not plan.buys or now_chip in (WILDCARD, FREE_HIT):
+        return dec
+    same_chip = {
+        "triple_captain_gw": horizon[0] if now_chip == TRIPLE_CAPTAIN else None,
+        "bench_boost_gw": horizon[0] if now_chip == BENCH_BOOST else None,
+    }
+    msd, msd_after = robust.mean_sds(dists, horizon, after)
+
+    def load(p: Plan) -> dict[int, float]:
+        return robust.loadings(p, horizon, msd, msd_after, multiplier, world=world)
+
+    hold = plan_with(max_transfers=0, **same_chip)
+    dec.hold = hold
+    l_hold, l_plan = load(hold), load(plan)
+    first = plan
+    vs_hold = robust.compare(plan, hold, l_plan, l_hold)
+    notes = []
+    if plan.hits:
+        no_hit = plan_with(max_transfers=squad.free_transfers, **same_chip)
+        if no_hit.buys:
+            dec.alternatives["no_hit"] = no_hit
+            l_no_hit = load(no_hit)
+            vs_no_hit = robust.compare(plan, no_hit, l_plan, l_no_hit)
+            dec.p_hit = round(vs_no_hit.p, 3)
+            if vs_no_hit.p < robust.HIT_CONFIDENCE:
+                notes.append(
+                    f"The best plan took a -{R.HIT_COST * plan.hits} hit, but it beat the best "
+                    f"plan without one in only {vs_no_hit.p:.0%} of tests with the forecasts "
+                    "nudged up and down, so the hit isn't worth the risk."
+                )
+                plan, l_plan = no_hit, l_no_hit
+                vs_hold = robust.compare(plan, hold, l_plan, l_hold)
+    if vs_hold.p < robust.MOVE_CONFIDENCE:
+        notes.append(
+            f"The best moves beat saving the transfer in only {vs_hold.p:.0%} of tests with the "
+            "forecasts nudged up and down, so saving it is the safer choice."
+        )
+        plan = hold
+    if plan is not first:
+        dec.alternatives["planner"] = first
+        dec.robust_note = " ".join(notes)
+    dec.plan = plan
+    if chip_now is not None and chip_now.plan is first:
+        chip_now.plan = plan
+    dec.p_beats_hold = round(vs_hold.p, 3)
+    if plan is hold:
+        dec.confidence = round(1 - vs_hold.p, 3)
+    else:
+        dec.confidence = dec.p_beats_hold
+        dec.value_of_moves = round(plan.objective - hold.objective, 1)
+    dec.move_confidence = move_confidences(plan, horizon, msd, multiplier)
+    return dec
+
+
+def restate_confidence(dec: Decision, plan: Plan, world: World) -> None:
+    """Confidence for a different plan than `decide` chose (the league choice switched)."""
+    if dec.hold is None:
+        return
+    after = dec.window[len(dec.horizon) :]
+    msd, msd_after = robust.mean_sds(dec.dists, dec.horizon, after)
+
+    def load(p: Plan) -> dict[int, float]:
+        return robust.loadings(
+            p, dec.horizon, msd, msd_after, dec.multiplier, world=world
+        )
+
+    hold = dec.hold
+    if plan.buys:
+        p = robust.compare(plan, hold, load(plan), load(hold)).p
+        dec.p_beats_hold = dec.confidence = round(p, 3)
+        dec.value_of_moves = round(plan.objective - hold.objective, 1)
+    elif dec.p_beats_hold is not None:
+        dec.confidence = round(1 - dec.p_beats_hold, 3)
+        dec.value_of_moves = None
+    dec.move_confidence = move_confidences(plan, dec.horizon, msd, dec.multiplier)
+
+
+def move_confidences(
+    plan: Plan,
+    horizon: list[int],
+    msd: dict[int, dict[int, float]],
+    multiplier: dict[int, float] | None,
+) -> list[robust.Confidence]:
+    """Each of this week's moves: P(the swap gains more than its share of any hit)."""
+    moves = plan.moves
+    cost = R.HIT_COST * plan.hits / len(moves) if moves else 0.0
+    return [
+        robust.move_confidence(m, plan, horizon, msd, multiplier, cost=cost)
+        for m in moves
+    ]
 
 
 # ------------------------------------------------------------------ explanations
@@ -388,6 +532,11 @@ def transfer_lines(a: Advice) -> list[str]:
         lines.append(
             f"Play your **{R.CHIP_NAMES[a.chip_now.chip]}**: {n} changes, all free."
         )
+    elif n == 0 and (a.robust_note or _league_reason_plan(a)):
+        lines.append(
+            f"**No transfers this week.** You have {ft} free transfer{'s' if ft != 1 else ''}. "
+            + (_league_reason_plan(a) or a.robust_note or "")
+        )
     elif n == 0:
         nxt = later[0] if later else None
         lines.append(
@@ -412,14 +561,26 @@ def transfer_lines(a: Advice) -> list[str]:
             if a.value_of_moves is not None
             else ""
         )
+        extra = " ".join(x for x in (a.robust_note, _league_reason_plan(a)) if x)
         lines.append(
             f"**Make {n} transfer{'s' if n > 1 else ''}** (you have {ft} free{hit}).{worth}"
+            + (f" {extra}" if extra else "")
         )
-    for m in moves:
+    conf = confidence_sentence(a)
+    if conf:
+        lines.append(conf)
+    mc = a.move_confidence if len(a.move_confidence) == len(moves) else []
+    for k, m in enumerate(moves):
         po, pi = a.world.players[m.out], a.world.players[m.inn]
+        sure = (
+            f" How sure: {robust.level(mc[k].p)} ({mc[k].p:.0%} of tests with the forecasts "
+            "nudged say this swap pays off)."
+            if mc
+            else ""
+        )
         lines.append(
             f"- OUT **{po.name}** (£{m.sell_price:.1f}m), IN **{pi.name}** (£{pi.price:.1f}m) — "
-            f"{m.gain:+.1f} expected points as the plan counts them ({_money(m.money)}).\n"
+            f"{m.gain:+.1f} expected points as the plan counts them ({_money(m.money)}).{sure}\n"
             f"  - Why sell: {_why_out(a, m.out)}.\n"
             f"  - Why {pi.name}: {a.horizon_xp(m.inn):.1f} expected points over {len(a.horizon)} "
             f"weeks, fixtures {a.fixtures(m.inn)}"
@@ -446,6 +607,40 @@ def transfer_lines(a: Advice) -> list[str]:
         for wk in later:
             lines.append(f"- {_week_text(a, wk)}")
     return lines
+
+
+def _league_reason_plan(a: Advice) -> str | None:
+    c = a.league_choice
+    return c.reason_plan if c and c.switched else None
+
+
+def transfer_confidence(a: Advice) -> dict | None:
+    """{"level": "strong" | "likely" | "close call", "p_beats_hold": P(moves beat holding)}.
+
+    The level is about the advice given: moving when it says move, holding when it says hold.
+    None when there was nothing to compare (no move worth testing, a squad from scratch, or a
+    Wildcard / Free Hit week).
+    """
+    if a.initial or a.confidence is None or a.p_beats_hold is None:
+        return None
+    return {"level": robust.level(a.confidence), "p_beats_hold": a.p_beats_hold}
+
+
+def confidence_sentence(a: Advice) -> str | None:
+    c = transfer_confidence(a)
+    if not c:
+        return None
+    p = c["p_beats_hold"]
+    if a.plan.buys:
+        return (
+            f"How sure: **{c['level']}**. We re-tested the plan with every player's expected "
+            f"points nudged up or down by how unsure they are; these moves beat saving the "
+            f"transfer in {p:.0%} of the tests."
+        )
+    return (
+        f"How sure: **{c['level']}**. With every player's expected points nudged up or down by "
+        f"how unsure they are, the best moves beat saving the transfer in only {p:.0%} of the tests."
+    )
 
 
 def _money(delta: float) -> str:
@@ -506,7 +701,36 @@ def captain_lines(a: Advice) -> list[str]:
             lines.append(
                 f"Few rivals ({share:.0%}) captained {a.name(cap)} last week, so a big score here is a real chance to gain ground."
             )
+    reason = captain_reason_league(a)
+    if reason:
+        lines.append(f"**For your league:** {reason}")
     return lines
+
+
+def captain_reason_league(a: Advice) -> str | None:
+    """Why the captain differs from the expected-points pick, when the league choice changed it."""
+    c = a.league_choice
+    return c.reason_captain if c and c.switched else None
+
+
+def league_win_odds(a: Advice) -> dict | None:
+    """{"me": P(you finish 1st), "rows": [{"entry", "name", "p_first"}], "sentence"}."""
+    c = a.league_choice
+    if not c:
+        return None
+    o = c.odds
+    rows = sorted(
+        (
+            {"entry": int(k), "name": o.labels[k], "p_first": round(o.p_first[k], 3)}
+            for k in o.keys
+        ),
+        key=lambda r: -r["p_first"],
+    )
+    return {
+        "me": round(o.p_first[c.me], 3),
+        "rows": rows,
+        "sentence": describe_odds(o, c.me),
+    }
 
 
 def lineup_lines(a: Advice) -> list[str]:
@@ -554,6 +778,9 @@ def league_lines(a: Advice) -> list[str]:
     if lg.last_season_best:
         who, pts = lg.last_season_best
         lines.append(f"Best total last season among these managers: {pts} ({who}).")
+    odds = league_win_odds(a)
+    if odds:
+        lines.append(f"**Chance of winning:** {odds['sentence']}")
     lines.append(f"**Strategy:** {a.risk_reason}")
     mine = set(a.plan.squad)
     threats = sorted(
