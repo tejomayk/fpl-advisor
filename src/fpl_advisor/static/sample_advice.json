@@ -18,7 +18,10 @@
     10,
     11,
     12,
-    13
+    13,
+    14,
+    15,
+    16
   ],
   "initial": false,
   "transfers": {
@@ -67,7 +70,7 @@
         },
         "gain": 11.2,
         "why_out": "Hip injury - 75% chance of playing",
-        "why_in": "27.2 expected points over 5 weeks; fixtures LIV(a) HUL(H) NEW(a); owned by 0% of your rivals.",
+        "why_in": "27.2 expected points over 8 weeks; fixtures LIV(a) HUL(H) NEW(a); owned by 0% of your rivals.",
         "xp_difference": 11.2,
         "money": -2.2,
         "confidence": {
@@ -110,8 +113,8 @@
           "p_goal": 0.09
         },
         "gain": 7.8,
-        "why_out": "only 12.8 expected points over the next 5 weeks (CHE(a) AVL(H) LIV(a))",
-        "why_in": "22.1 expected points over 5 weeks; fixtures CRY(H) LEE(a) IPS(H); owned by 8% of your rivals.",
+        "why_out": "only 12.8 expected points over the next 8 weeks (CHE(a) AVL(H) LIV(a))",
+        "why_in": "22.1 expected points over 8 weeks; fixtures CRY(H) LEE(a) IPS(H); owned by 8% of your rivals.",
         "xp_difference": 9.3,
         "money": -0.2,
         "confidence": {
@@ -155,7 +158,7 @@
         },
         "gain": 17.5,
         "why_out": "Hamstring injury - Unknown return date",
-        "why_in": "22.1 expected points over 5 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 8% of your rivals.",
+        "why_in": "22.1 expected points over 8 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 8% of your rivals.",
         "xp_difference": 17.5,
         "money": -1.4,
         "confidence": {
@@ -198,8 +201,8 @@
           "p_goal": 0.22
         },
         "gain": 18.6,
-        "why_out": "only 5.8 expected points over the next 5 weeks (EVE(H) FUL(a) ARS(H))",
-        "why_in": "24.4 expected points over 5 weeks; fixtures LEE(H) IPS(a) NFO(H); owned by 17% of your rivals.",
+        "why_out": "only 5.8 expected points over the next 8 weeks (EVE(H) FUL(a) ARS(H))",
+        "why_in": "24.4 expected points over 8 weeks; fixtures LEE(H) IPS(a) NFO(H); owned by 17% of your rivals.",
         "xp_difference": 18.6,
         "money": -0.4,
         "confidence": {
@@ -243,7 +246,7 @@
         },
         "gain": 9.9,
         "why_out": "Thigh injury - Unknown return date",
-        "why_in": "17.9 expected points over 5 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 0% of your rivals.",
+        "why_in": "17.9 expected points over 8 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 0% of your rivals.",
         "xp_difference": 9.9,
         "money": 2.0,
         "confidence": {
@@ -915,7 +918,7 @@
       "name": "Wildcard",
       "play_now": false,
       "expires_gw": 19,
-      "reason": "Rebuilding your whole squad would add about +3.4 expected points over the next 5 weeks compared with your best normal transfers (12 changes). That's below the 15-point bar, so keep it. Wildcards are best used when you have several problems at once, like injuries or many players with bad fixtures."
+      "reason": "Rebuilding your whole squad would add about +3.4 expected points over the next 8 weeks compared with your best normal transfers (12 changes). That's below the 15-point bar, so keep it. Wildcards are best used when you have several problems at once, like injuries or many players with bad fixtures."
     },
     {
       "chip": "freehit",

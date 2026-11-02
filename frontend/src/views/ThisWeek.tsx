@@ -52,7 +52,9 @@ function Hero({ d, demo }: { d: Advice; demo: boolean }) {
           <p className="num mt-3 text-[clamp(72px,18vw,128px)] leading-[0.88] font-semibold tracking-[-0.03em] text-grass-ink">
             <CountUp value={gain!} sign />
           </p>
-          <p className="mt-4 text-[17px] text-fg">Extra expected points this week from these moves</p>
+          <p className="mt-4 text-[17px] text-fg">
+            Extra expected points this week{isNum(d.gameweek?.id) ? ` (GW${d.gameweek!.id})` : ""} from these moves
+          </p>
           <p className="num mt-2 flex flex-wrap items-center gap-x-2 text-[15px] text-fg-2">
             <span>{f1(now)} now</span>
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" className="text-fg-3">
@@ -228,11 +230,20 @@ function Transfers({ d }: { d: Advice }) {
           transition={{ type: "spring", stiffness: 220, damping: 28, delay: 0.3 }}
           className="mt-3 flex items-center gap-4 rounded-2xl bg-raised px-4 py-3.5"
         >
-          <span className={`num text-[22px] font-semibold tracking-[-0.01em] ${tr.value_of_moves < 0 ? "text-red" : "text-grass-ink"}`}>
-            {signed(tr.value_of_moves)}
-          </span>
           <span className="min-w-0 flex-1 text-[15px] leading-snug text-fg-2">
-            points for making {moves.length === 1 ? "this move" : "these moves"} now instead of saving your transfers
+            <span className="font-medium text-fg">Why now, not next week: </span>
+            {tr.value_of_moves >= 0 ? (
+              <>
+                {moves.length === 1 ? "it adds" : "they add"}{" "}
+                <span className="num font-semibold text-fg">{f1(tr.value_of_moves)}</span> more expected points
+              </>
+            ) : (
+              <>
+                {moves.length === 1 ? "it costs" : "they cost"}{" "}
+                <span className="num font-semibold text-fg">{f1(-tr.value_of_moves)}</span> expected points
+              </>
+            )}{" "}
+            {windowText(d.horizon)} than saving your transfers
           </span>
           {overall && (
             <span className="flex shrink-0 items-center gap-2 text-[13px] text-fg-2">
@@ -276,6 +287,13 @@ function Transfers({ d }: { d: Advice }) {
       {later.length > 0 && <Later weeks={later} />}
     </Section>
   );
+}
+
+/** "over the next 8 gameweeks (GW9–16)", from the plan's horizon in the data. */
+function windowText(h?: number[]) {
+  if (!Array.isArray(h) || !h.length) return "over the coming gameweeks";
+  if (h.length === 1) return `in GW${h[0]}`;
+  return `over the next ${h.length} gameweeks (${horizonLabel(h)})`;
 }
 
 /** No move this week: say so plainly, with the plan's own reason. */
