@@ -92,6 +92,17 @@ def test_preseason_ratings_come_from_last_season_and_promoted_sides_start_low():
     assert ratings[2].defence > ratings[3].defence > ratings[1].defence
 
 
+def test_only_the_previous_season_counts_as_last_season():
+    w = make_world()  # first deadline in August 2025, so last season is 2024/25
+    p = next(iter(w.players.values()))
+    w.past[p.id] = {"season_name": "2024/25", "minutes": 2000}
+    assert M._usable_past(w, p.id) is w.past[p.id]
+    w.past[p.id] = {"season_name": "2019/20", "minutes": 3000}
+    assert M._usable_past(w, p.id) is None
+    w.past[p.id] = {"minutes": 2000}  # no season name (season replay data): trusted
+    assert M._usable_past(w, p.id) is w.past[p.id]
+
+
 def test_preseason_prior_fades_as_results_come_in():
     pre = _preseason_world()
     later = make_world()  # three gameweeks played

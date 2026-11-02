@@ -223,8 +223,31 @@ def fixture_lambdas(
 # ---------------------------------------------------------------- player rates
 
 
+def _season_start_year(world: World) -> int | None:
+    """Calendar year the season being projected started in (seasons start in August)."""
+    if not world.events:
+        return None
+    first = min(e.deadline for e in world.events)
+    return first.year if first.month >= 7 else first.year - 1
+
+
 def _usable_past(world: World, pid: int) -> dict | None:
-    return world.past.get(pid)
+    """Last season's totals for the player, or None if they are from an older season.
+
+    FPL's history_past lists every Premier League season a player had, so the latest can be
+    years old (a player back from abroad or the Championship). Those numbers come from another
+    team, another role and often another level, so they are ignored: such a player gets the
+    position and price-band prior, like a new signing. Rows without a season name (the season
+    replay's data) are taken as last season.
+    """
+    past = world.past.get(pid)
+    if not past or "season_name" not in past:
+        return past
+    year = _season_start_year(world)
+    if year is None:
+        return past
+    expected = f"{year - 1}/{year % 100:02d}"
+    return past if past["season_name"] == expected else None
 
 
 _RATE_KEYS = ("expected_goals", "expected_assists", "saves", "bonus", "yellow_cards")
