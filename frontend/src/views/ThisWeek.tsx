@@ -3,9 +3,23 @@ import type { ReactNode } from "react";
 import { CountUp } from "../components/CountUp";
 import { useSheet } from "../components/Sheet";
 import { Token } from "../components/Token";
-import { Chevron, DotMark, Legend, list, Rise, RowButton, Section, StatusDot, Tip } from "../components/ui";
-import { availability, f1, horizonLabel, isNum, money, signed } from "../lib/format";
-import type { Advice, Move, Player } from "../lib/types";
+import { Md } from "../components/Md";
+import {
+  Chevron,
+  ConfDots,
+  confLegend,
+  DotMark,
+  item,
+  Legend,
+  list,
+  Rise,
+  RowButton,
+  Section,
+  StatusDot,
+  Tip,
+} from "../components/ui";
+import { availability, CONF_LABEL, confKey, f1, horizonLabel, isNum, money, moneyText, signed } from "../lib/format";
+import type { Advice, Move, PlanWeek, Player } from "../lib/types";
 import {
   captainSheet,
   chipsSheet,
@@ -67,8 +81,11 @@ function TransferRow({ mv, d, i }: { mv: Move; d: Advice; i: number }) {
   const show = useSheet();
   const o = mv.out!;
   const n = mv.in!;
+  const cash = moneyText(mv.money);
+  const ck = confKey(mv.confidence?.level);
+  const label = [`Sell ${o.name}, buy ${n.name}`, cash, ck && `confidence: ${CONF_LABEL[ck]}`].filter(Boolean).join(", ");
   return (
-    <RowButton onClick={() => show(transferSheet(mv, d))} label={`Sell ${o.name}, buy ${n.name}`} className="py-5">
+    <RowButton onClick={() => show(transferSheet(mv, d))} label={label} className="py-5">
       <span className="flex min-w-0 items-stretch gap-3">
         <Tip label="Out, then in" className="w-[30px] shrink-0">
         <span aria-hidden="true" className="flex w-[30px] flex-col items-center">
@@ -98,12 +115,20 @@ function TransferRow({ mv, d, i }: { mv: Move; d: Advice; i: number }) {
           </span>
         </span>
       </span>
-      <span className="ml-auto flex items-center gap-2">
-        {isNum(mv.gain) && (
-          <span className={`num text-[30px] font-semibold tracking-[-0.02em] ${mv.gain < 0 ? "text-red" : "text-grass-ink"}`}>
-            <CountUp value={mv.gain} sign delay={0.15 + i * 0.06} />
-          </span>
-        )}
+      <span className="ml-auto flex shrink-0 items-center gap-2">
+        <span className="flex flex-col items-end gap-1.5">
+          {isNum(mv.gain) && (
+            <span className={`num text-[30px] leading-none font-semibold tracking-[-0.02em] ${mv.gain < 0 ? "text-red" : "text-grass-ink"}`}>
+              <CountUp value={mv.gain} sign delay={0.15 + i * 0.06} />
+            </span>
+          )}
+          {(cash || ck) && (
+            <span className="num flex flex-col items-end gap-1 text-[13px] whitespace-nowrap text-fg-2 sm:flex-row sm:items-center sm:gap-2">
+              {ck && <ConfDots k={ck} />}
+              {cash}
+            </span>
+          )}
+        </span>
         <Chevron className="transition-transform duration-200 group-hover:translate-x-0.5" />
       </span>
     </RowButton>
@@ -178,10 +203,13 @@ function Transfers({ d }: { d: Advice }) {
   if (kinds.has("bad")) marks.push([<DotMark tone="bad" />, "Injured or out"]);
   if (kinds.has("warn")) marks.push([<DotMark tone="warn" />, "Doubtful"]);
   if (moves.some((x) => x.in?.price_move === "rise")) marks.push([<Rise dir="rise" />, "Price may rise tonight"]);
+  const confs = confLegend(moves.map((x) => confKey(x.confidence?.level)));
+  const overall = confKey(tr.confidence?.level);
+  const later = (tr.pencilled || []).filter((w) => (w.moves || []).some((x) => x.out && x.in) || w.chip);
   return (
     <Section
       title="Transfers"
-      sub={moves.length ? `Gain in expected points over ${horizonLabel(d.horizon) || "the next few gameweeks"}` : undefined}
+      sub={moves.length ? `Expected points gained over ${horizonLabel(d.horizon) || "the next few gameweeks"}, as the plan counts them` : undefined}
       meta={meta}
     >
       {moves.length ? (
@@ -191,15 +219,33 @@ function Transfers({ d }: { d: Advice }) {
           ))}
         </m.ul>
       ) : (
-        <m.p
+        <Hold d={d} />
+      )}
+      {moves.length > 0 && isNum(tr.value_of_moves) && (
+        <m.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="py-5 text-[22px] font-semibold tracking-[-0.01em]"
+          transition={{ type: "spring", stiffness: 220, damping: 28, delay: 0.3 }}
+          className="mt-3 flex items-center gap-4 rounded-2xl bg-raised px-4 py-3.5"
         >
-          Save your transfer for next week
-        </m.p>
+          <span className={`num text-[22px] font-semibold tracking-[-0.01em] ${tr.value_of_moves < 0 ? "text-red" : "text-grass-ink"}`}>
+            {signed(tr.value_of_moves)}
+          </span>
+          <span className="min-w-0 flex-1 text-[15px] leading-snug text-fg-2">
+            points for making {moves.length === 1 ? "this move" : "these moves"} now instead of saving your transfers
+          </span>
+          {overall && (
+            <span className="flex shrink-0 items-center gap-2 text-[13px] text-fg-2">
+              <ConfDots k={overall} />
+              {CONF_LABEL[overall]}
+            </span>
+          )}
+        </m.div>
       )}
-      <Legend items={marks} className="mt-4" />
+      {confs.length > 0 && (
+        <Legend items={[[<span className="text-fg-2">How sure the plan is:</span>, ""], ...confs]} className="mt-5" />
+      )}
+      <Legend items={marks} className={confs.length ? "mt-2" : "mt-4"} />
       {(hits > 0 || timing.length > 0) && (
         <div className="mt-4 flex flex-wrap gap-2">
           {hits > 0 && (
@@ -227,7 +273,92 @@ function Transfers({ d }: { d: Advice }) {
           )}
         </div>
       )}
+      {later.length > 0 && <Later weeks={later} />}
     </Section>
+  );
+}
+
+/** No move this week: say so plainly, with the plan's own reason. */
+function Hold({ d }: { d: Advice }) {
+  const tr = d.transfers || {};
+  const ft = isNum(tr.free_transfers) ? tr.free_transfers : d.team?.free_transfers;
+  const why = (tr.headline || "").replace(/^\*\*No transfers this week\.\*\*\s*/i, "").trim();
+  const ck = confKey(tr.confidence?.level);
+  return (
+    <m.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="py-5">
+      <p className="text-[22px] font-semibold tracking-[-0.01em]">
+        Save your free {ft === 1 ? "transfer" : "transfers"}
+      </p>
+      {why && (
+        <p className="mt-2 text-[15px] leading-relaxed text-fg-2">
+          <Md text={why} />
+        </p>
+      )}
+      {ck && (
+        <p className="mt-3 flex items-center gap-2 text-[13px] text-fg-2">
+          <ConfDots k={ck} />
+          <span>
+            How sure the plan is: <span className="font-medium text-fg">{CONF_LABEL[ck]}</span>
+          </span>
+        </p>
+      )}
+    </m.div>
+  );
+}
+
+/** Moves the plan has pencilled in for later gameweeks: context, not instructions for now. */
+function Later({ weeks }: { weeks: PlanWeek[] }) {
+  return (
+    <m.section
+      aria-labelledby="later-title"
+      initial={{ opacity: 0, y: 12 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ type: "spring", stiffness: 200, damping: 28 }}
+      className="mt-12 rounded-[24px] px-5 pt-5 pb-3 ring-1 ring-line ring-inset"
+    >
+      <h3 id="later-title" className="text-[15px] font-medium text-fg-2">
+        Later in the plan
+      </h3>
+      <p className="mt-0.5 text-[13px] text-fg-3">Planned for later weeks; may change</p>
+      <m.ol variants={list} initial="hidden" whileInView="show" viewport={{ once: true }} className="mt-3">
+        {weeks.map((w, wi) => {
+          const mv = (w.moves || []).filter((x) => x.out && x.in);
+          const ft = w.free_transfers;
+          const hit = isNum(w.hits) && w.hits > 0 ? `, −${w.hits * 4} points` : "";
+          return (
+            <m.li key={w.gameweek ?? wi} variants={item} className="border-t border-line py-3 first:border-t-0">
+              <div className="flex items-baseline justify-between gap-3 text-[13px]">
+                <span className="num font-semibold text-fg-2">GW{w.gameweek}</span>
+                {mv.length > 0 && isNum(ft) && (
+                  <span className="num text-fg-3">
+                    {ft} free {ft === 1 ? "transfer" : "transfers"}
+                    {hit}
+                  </span>
+                )}
+              </div>
+              {w.chip && <p className="mt-1.5 text-[15px] text-fg-2">Play {w.chip}</p>}
+              {mv.map((x) => (
+                <div key={`${x.out!.id}-${x.in!.id}`} className="mt-2 flex items-center gap-3">
+                  <span aria-hidden="true" className="flex shrink-0 items-center gap-1">
+                    <Token team={x.out!.team} size={20} dim label={false} />
+                    <Token team={x.in!.team} size={20} label={false} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-fg-2">
+                    {x.out!.name} <span aria-hidden="true" className="text-fg-3">→</span>
+                    <span className="sr-only">to</span> <span className="text-fg">{x.in!.name}</span>
+                  </span>
+                  <span className="num shrink-0 text-right text-[13px] text-fg-3">
+                    {isNum(x.gain) && <span className="font-semibold text-fg-2">{signed(x.gain)} pts</span>}
+                    {moneyText(x.money) && <span className="block">{moneyText(x.money)}</span>}
+                  </span>
+                </div>
+              ))}
+            </m.li>
+          );
+        })}
+      </m.ol>
+    </m.section>
   );
 }
 
@@ -280,7 +411,35 @@ function Captain({ d }: { d: Advice }) {
           </span>
         </RowButton>
       </m.ul>
+      {c.reason_league && (
+        <m.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mt-2 flex gap-3 border-t border-line pt-4 text-[15px] leading-relaxed text-fg-2"
+        >
+          <TrophyIcon />
+          <span>
+            <Md text={c.reason_league} />
+          </span>
+        </m.p>
+      )}
     </Section>
+  );
+}
+
+function TrophyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" className="mt-1 shrink-0 text-fg-3">
+      <path
+        d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M9 20h6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

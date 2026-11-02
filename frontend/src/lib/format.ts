@@ -78,7 +78,29 @@ export function safeUrl(u: unknown): string | null {
   }
 }
 
-export const capitalise = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+/** A move's effect on the bank in plain words: "costs £2.2m", "frees £2.0m". */
+export function moneyText(v: unknown) {
+  if (!isNum(v)) return null;
+  if (Math.abs(v) < 0.05) return "no money change";
+  return v > 0 ? `frees £${v.toFixed(1)}m` : `costs £${Math.abs(v).toFixed(1)}m`;
+}
+
+export type ConfKey = "strong" | "likely" | "close";
+export const CONF_LABEL: Record<ConfKey, string> = { strong: "Strong", likely: "Likely", close: "Close call" };
+
+/** "strong" / "likely" / "close call" from the API, or null for anything else. */
+export function confKey(level?: string | null): ConfKey | null {
+  const s = (level || "").toLowerCase();
+  if (s === "strong") return "strong";
+  if (s === "likely") return "likely";
+  if (s.startsWith("close")) return "close";
+  return null;
+}
+
+/** 0.74 -> "7 of 10" (simulations where the move beat holding). */
+export const inTen = (p: unknown) => (isNum(p) ? `${Math.round(clamp01(p) * 10)} of 10` : null);
+
+export const capitalise =(s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
 
 export const CHIP_SHORT: Record<string, string> = {
   Wildcard: "WC",

@@ -3,10 +3,14 @@ import { Fixtures } from "../components/Fixtures";
 import { Md } from "../components/Md";
 import type { SheetSpec } from "../components/Sheet";
 import { Token } from "../components/Token";
-import { Meter, Prose, Rise, Stat, StatusDot, SubHead } from "../components/ui";
+import { ConfDots, Meter, Prose, Rise, Stat, StatusDot, SubHead } from "../components/ui";
 import {
   availability,
   capitalise,
+  CONF_LABEL,
+  confKey,
+  inTen,
+  moneyText,
   dateTime,
   f1,
   horizonLabel,
@@ -126,6 +130,48 @@ function CompareRow({ k, a, b }: { k: string; a: ReactNode; b: ReactNode }) {
   );
 }
 
+/** Money, confidence and the plain points difference: what the plan weighed for this move. */
+function PlanFacts({ m }: { m: Move }) {
+  const cash = moneyText(m.money);
+  const ck = confKey(m.confidence?.level);
+  const odds = inTen(m.confidence?.p_beats_hold);
+  const plain = isNum(m.xp_difference) && isNum(m.gain) && Math.abs(m.xp_difference - m.gain) >= 0.1 ? m.xp_difference : null;
+  if (!cash && !ck && plain === null) return null;
+  return (
+    <div className="mt-6 space-y-3">
+      {(cash || ck) && (
+        <div className="grid grid-cols-2 gap-3">
+          {cash && (
+            <div className="rounded-2xl bg-raised px-4 py-4">
+              <div className="text-[13px] text-fg-3">Money</div>
+              <div className="num mt-1 text-[19px] font-semibold">{capitalise(cash)}</div>
+              <div className="mt-1 text-[13px] text-fg-2">
+                {isNum(m.money) && Math.abs(m.money) >= 0.05 ? (m.money > 0 ? "Added to your bank" : "Taken from your bank") : "Same price"}
+              </div>
+            </div>
+          )}
+          {ck && (
+            <div className="rounded-2xl bg-raised px-4 py-4">
+              <div className="text-[13px] text-fg-3">How sure the plan is</div>
+              <div className="mt-1 flex items-center gap-2 text-[19px] font-semibold">
+                <ConfDots k={ck} />
+                {CONF_LABEL[ck]}
+              </div>
+              {odds && <div className="mt-1 text-[13px] text-fg-2">Beats saving the transfer in {odds} simulations</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {plain !== null && (
+        <p className="text-[13px] leading-relaxed text-fg-3">
+          Plain difference in expected points: <span className="num font-medium text-fg-2">{signed(plain)}</span>. The plan
+          weighs nearer weeks more and counts whether he would start or sit on your bench.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function transferSheet(m: Move, d: Advice): SheetSpec {
   const o = m.out!;
   const n = m.in!;
@@ -147,8 +193,9 @@ export function transferSheet(m: Move, d: Advice): SheetSpec {
           <span className={`num text-[64px] leading-[0.9] font-semibold tracking-[-0.03em] ${isNum(m.gain) && m.gain < 0 ? "text-red" : "text-grass-ink"}`}>
             {signed(m.gain)}
           </span>
-          <span className="pb-1.5 text-[15px] text-fg-2">expected points gained, {hz}</span>
+          <span className="pb-1.5 text-[15px] text-fg-2">expected points gained, <span className="whitespace-nowrap">{hz}</span>, as the plan counts them</span>
         </div>
+        <PlanFacts m={m} />
 
         <div className="mt-8 grid grid-cols-2 gap-4">
           <Side p={o} out />
@@ -261,13 +308,20 @@ export function captainSheet(d: Advice): SheetSpec {
             </ol>
           </>
         )}
-        {c.note && (
+        {(c.note || c.reason_league) && (
           <>
             <SubHead>Why</SubHead>
             <Prose>
-              <p>
-                <Md text={c.note} />
-              </p>
+              {c.reason_league && (
+                <p>
+                  <Md text={c.reason_league} />
+                </p>
+              )}
+              {c.note && (
+                <p>
+                  <Md text={c.note} />
+                </p>
+              )}
             </Prose>
           </>
         )}
