@@ -1,7 +1,8 @@
 """Out-of-sample backtest: for each finished gameweek, project using only earlier data and compare.
 
 Usage: uv run python scripts/backtest.py [--from 3]
-Availability news is not historical, so it is ignored here (it only helps the live model).
+Availability news is not historical, so it is ignored here (it only helps the live model): every
+player is treated as fit.
 """
 
 from __future__ import annotations
@@ -29,6 +30,10 @@ def main():
     args = ap.parse_args()
 
     world = load_world(FPLClient())
+    # Today's injury flags say nothing about past gameweeks (and the model now reads them to
+    # tell absences from benchings), so every player counts as fit, as in scripts/season_sim.py.
+    for p in world.players.values():
+        p.status, p.chance_next, p.news = "a", None, ""
     finished = [e.id for e in world.events if e.finished]
     rows = {"model": [], "ppg_so_far": [], "last_season_ppg": []}
     bins: dict[int, list] = {}
