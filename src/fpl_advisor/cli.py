@@ -18,6 +18,7 @@ from .notify import Notification, NotifyError, get_notifier, run_url
 from .prices import next_price_update, outlook
 from .signals_service import SignalsHub
 from .state import AlertState
+from .winprob import describe, league_odds
 from .world import load_world
 
 
@@ -166,6 +167,8 @@ def cmd_advise(cfg: Config, args) -> int:
     md = render_markdown(advice)
     print(md)
     _write_step_summary(md)
+    if advice.league and (odds := league_odds(advice.league, advice.world)):
+        print(f"\nChance of winning the league: {describe(odds, advice.league.me.entry)}")
     return 0
 
 

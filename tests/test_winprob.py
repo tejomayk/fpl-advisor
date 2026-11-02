@@ -334,3 +334,57 @@ class TestDescribe:
         s = W.describe(self.odds([0.995, 0.004, 0.001]), 0)
         assert "over 99%" in s and "You are the favourite" in s
         assert "Rival 1 is the closest challenger at under 1%." in s
+
+
+class TestFromLeague:
+    def view(self, remaining=3):
+        def mgr(entry, total, k, captain=None, chips=()):
+            return SimpleNamespace(
+                entry=entry,
+                team_name=f"Team {entry}",
+                manager="",
+                total=total,
+                picks=squad(k),
+                captain=captain,
+                chips_used=list(chips),
+                gws_played=38 - remaining - 1,
+            )
+
+        return SimpleNamespace(
+            me=mgr(1, 2000, 0),
+            rivals=[mgr(2, 2100, 1, captain=107, chips=[("3xc", 5)]), mgr(3, 1990, 2)],
+            remaining_gws=remaining,
+        )
+
+    def world(self):
+        w = make_world()
+        w.chips = [
+            {"name": "3xc", "start_event": 1, "stop_event": 38},
+            {"name": "bboost", "start_event": 1, "stop_event": 38},
+        ]
+        return w
+
+    def test_entrants(self):
+        world, view = self.world(), self.view()
+        d = dists_for(world)
+        ents = W.entrants_from_league(view, world, d, GWS)
+        assert [e.key for e in ents] == [1, 2, 3]
+        assert ents[1].label == "Team 2"
+        assert ents[1].picks[GWS[0]].captain == 107  # last captain kept: all equal xP
+        assert ents[1].chips_left == ["bboost"]
+        assert ents[0].chips_left == ["3xc", "bboost"]
+
+    def test_league_odds(self, monkeypatch):
+        world, view = self.world(), self.view(remaining=10)
+        monkeypatch.setattr(
+            "fpl_advisor.model.project_dist",
+            lambda w, gws: {
+                p: {g: PointsDist(4.0, 3.0, 0.5, 0.9) for g in gws} for p in w.players
+            },
+        )
+        odds = W.league_odds(view, world, horizon=3, n_sims=2000)
+        assert odds.detailed_gws == [29, 30, 31] and odds.later_gws == 7
+        assert odds.p_first[2] > odds.p_first[1] > 0
+        assert "Team 2 is the biggest threat" in W.describe(odds, 1)
+        view.remaining_gws = 0
+        assert W.league_odds(view, world) is None
