@@ -12,3 +12,4 @@ __pycache__/
 !.env.example
 /public/
 .vercel/
+.claude/worktrees/
