@@ -126,6 +126,8 @@ class PlanChoice:
     margin: float  # best minus runner-up
     margin_se: float
     odds: LeagueOdds  # the league with the manager on the baseline plan
+    # The league with the manager on each candidate (same simulated seasons).
+    candidate_odds: dict[str, LeagueOdds] = field(default_factory=dict)
 
 
 # ------------------------------------------------------------------ building teams
@@ -522,13 +524,22 @@ def choose_plan(
     vs = {n: diff(i, 0) for i, n in enumerate(names)}
     order = sorted(range(len(names)), key=lambda i: -p[i])
     margin, margin_se = diff(order[0], order[1]) if len(names) > 1 else (0.0, 0.0)
+    later = gws_left - len(gws)
+    cand_odds = {}
+    for i, n in enumerate(names):
+        t = totals.copy()
+        t[:, me_index] = cand[:, i]
+        ents = list(base)
+        ents[me_index] = _replace_picks(entrants[me_index], candidates[n])
+        cand_odds[n] = _odds(ents, t, gws, later)
     return PlanChoice(
         best=names[order[0]],
         p_first=p_first,
         vs_baseline=vs,
         margin=margin,
         margin_se=margin_se,
-        odds=_odds(base, totals, gws, gws_left - len(gws)),
+        odds=_odds(base, totals, gws, later),
+        candidate_odds=cand_odds,
     )
 
 

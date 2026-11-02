@@ -9,13 +9,17 @@ from .advise import (
     Advice,
     _why_out,
     captain_lines,
+    captain_reason_league,
     evidence,
+    league_win_odds,
     pencilled_weeks,
     plan_moves,
     signals_live,
+    transfer_confidence,
     transfer_lines,
 )
 from .prices import outlook
+from .robust import level
 from .squad import chips_available
 
 
@@ -133,7 +137,9 @@ def _strip(md: str) -> str:
 def _transfers(a: Advice) -> dict:
     lines = transfer_lines(a)
     moves = []
-    for m in plan_moves(a):
+    pm = plan_moves(a)
+    mc = a.move_confidence if len(a.move_confidence) == len(pm) else []
+    for k, m in enumerate(pm):
         out, inn = m.out, m.inn
         po, pi = _player(a, out), _player(a, inn)
         po["sell_price"] = m.sell_price
@@ -152,6 +158,12 @@ def _transfers(a: Advice) -> dict:
                 "money": m.money,  # change to the bank: + frees money, - costs money
                 "why_out": _why_out(a, out),
                 "why_in": why_in + ".",
+                # P(this swap gains more than its share of any hit), with forecasts nudged.
+                "confidence": (
+                    {"level": level(mc[k].p), "p_beats_hold": round(mc[k].p, 3)}
+                    if mc
+                    else None
+                ),
             }
         )
     hit_note = next(
@@ -170,6 +182,9 @@ def _transfers(a: Advice) -> dict:
         "squad": [_player(a, p) for p in a.plan.squad] if a.initial else [],
         "bank_after": a.plan.bank_after,
         "value_of_moves": a.value_of_moves,
+        # How sure the transfer advice is: level of the advice given (move or hold) and
+        # P(this week's best moves beat making none). None when there was nothing to test.
+        "confidence": transfer_confidence(a),
         "pencilled": [] if a.initial else [_week(a, wk) for wk in pencilled_weeks(a)],
     }
 
@@ -199,13 +214,16 @@ def _captain(a: Advice) -> dict:
     g = a.event.id
     cap, vice = a.plan.captain[g], a.plan.vice[g]
     ranked = sorted(a.plan.xi[g], key=lambda p: -a.xp[p].get(g, 0))[:3]
-    lines = captain_lines(a)
+    reason = captain_reason_league(a)
+    lines = [ln for ln in captain_lines(a) if not reason or reason not in ln]
     return {
         "captain": _player(a, cap),
         "vice": _player(a, vice),
         "multiplier": 3 if (a.chip_now and a.chip_now.chip == "3xc") else 2,
         "options": [_player(a, p) for p in ranked],
         "note": lines[2] if len(lines) > 2 else None,
+        # Set only when the captain was changed to raise the chance of winning the league.
+        "reason_league": reason,
     }
 
 
@@ -306,6 +324,7 @@ def _league(a: Advice) -> dict | None:
             {**_player(a, p), "ownership": round(lg.ownership.get(p, 0), 2)}
             for p in diffs
         ],
+        "win_odds": league_win_odds(a),
         "rival_chips": [
             {
                 "manager": m.manager,
