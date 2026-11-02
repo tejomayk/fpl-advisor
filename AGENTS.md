@@ -15,6 +15,7 @@
 ## Done means
 - `pytest` and `ruff check` pass; show the output.
 - Advice changes: run `advise` against live data and show the output. Model changes: show the backtest numbers before and after (`uv run python scripts/backtest.py`).
+- Model or decision changes: show `season_sim` season totals before and after (`uv run python scripts/season_sim.py`).
 
 ## Working style
 - Model and scoring rules live in `src/fpl_advisor/rules.py`; update there when FPL changes rules.
