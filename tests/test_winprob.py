@@ -100,12 +100,17 @@ class TestKnownAnswers:
             W.Entrant(0, "A", 600, {}, gws_played=10),
             W.Entrant(1, "B", 500, {}, gws_played=10),
         ]
-        # Same points from here, but A's 10 points a week more so far is a (shrunk) edge.
         a = W.win_odds(ents, d, world, 20, n_sims=4000)
-        ents[0].total, ents[1].total = 550, 550
+        assert a.p_first[0] > 0.8  # 100 ahead and in better form
+        # Level on points, but A scored them in 10 weeks and B in 15: A's higher points per
+        # week is a (shrunk) edge.
+        ents[0].total, ents[1].total = 600, 600
+        ents[1].gws_played = 15
         b = W.win_odds(ents, d, world, 20, n_sims=4000)
-        assert a.p_first[0] > 0.95
-        assert 0.5 < b.p_first[0] < 0.95  # level now, but A's form still counts
+        assert 0.55 < b.p_first[0] < 0.9
+        ents[1].gws_played = 10
+        c = W.win_odds(ents, d, world, 20, n_sims=4000)
+        assert c.p_first[0] == pytest.approx(0.5, abs=0.04)  # same form: a coin flip
 
 
 class TestSharedPlayers:

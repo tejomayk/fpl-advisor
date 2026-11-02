@@ -168,7 +168,9 @@ def cmd_advise(cfg: Config, args) -> int:
     print(md)
     _write_step_summary(md)
     if advice.league and (odds := league_odds(advice.league, advice.world)):
-        print(f"\nChance of winning the league: {describe(odds, advice.league.me.entry)}")
+        print(
+            f"\nChance of winning the league: {describe(odds, advice.league.me.entry)}"
+        )
     return 0
 
 

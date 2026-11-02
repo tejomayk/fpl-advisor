@@ -55,6 +55,11 @@ SKILL_PRIOR_SD = 2.6
 # Rough average gain from an unused chip over playing without it (points). Only used for later
 # weeks, where nobody's chip timing is known.
 CHIP_VALUE = {"3xc": 6.0, "bboost": 8.0, "freehit": 6.0, "wildcard": 6.0}
+# Edges are not fixed: squads, effort and luck with transfers change through a season. This is
+# how far a manager's average for the rest of the season can move from the edge seen so far
+# (points per gameweek). Fitted on scripts/winprob_calibration.py: without it the favourite won
+# 54% of leagues against a predicted 65%; with 4.0, 54% against 56% (Brier and log loss best).
+EDGE_DRIFT_SD = 4.0
 MIN_COV_GWS = 5  # past gameweeks needed before their covariance is used
 COV_SHRINK_GWS = 10  # empirical covariance weight: n / (n + this)
 GAP_PERCENTILES = (10, 25, 50, 75, 90)
@@ -402,7 +407,8 @@ def _later_weeks(
         w = n_hist / (n_hist + COV_SHRINK_GWS)
         cov = w * emp + (1 - w) * cov
     L = np.linalg.cholesky(cov + 1e-6 * np.eye(M))
-    skill = edge + edge_sd * rng.standard_normal((S, M))
+    spread = np.sqrt(edge_sd**2 + EDGE_DRIFT_SD**2)
+    skill = edge + spread * rng.standard_normal((S, M))
     noise = rng.standard_normal((S, M)) @ L.T
     return n * skill + math.sqrt(n) * noise + chips
 
