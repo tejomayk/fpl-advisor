@@ -38,6 +38,15 @@ NO_PAST_START_PRIOR = 0.5  # prior for a player with no usable last season
 NO_HISTORY_START = 0.05  # no matches this season and no past: a fringe player
 SUB_PRIOR = 0.3  # P(comes on | not started), outfield
 GK_SUB_PRIOR = 0.02  # goalkeepers almost never come off the bench
+# Population priors (_position_priors): per-90 rates shrink toward players of the same position
+# and price band, so a hot start or one good season is regressed (xG over-performance repeats
+# little year to year).
+PRICE_BANDS = (5.0, 6.0, 7.0, 8.5, 10.5)  # £m boundaries
+BAND_MIN_MINUTES = 5000.0  # a thinner band borrows the position-wide prior
+POP_PRIOR_MINUTES = 900.0  # weight of the population prior on last season's rates
+# FPL gives ~1.38x as many assists as Opta xA in every season 2023/24-2026/27 (forwards ~2.1x),
+# but scaling xA up made projections worse (bias +0.1 for MID/FWD, no gain in ranking): the
+# extra assists are already offset elsewhere in the formula. Not applied.
 TEAM_PRIOR_GAMES = 4.0  # shrink team ratings toward the league average
 XG_SHARE = 0.7  # team ratings: weight on xG vs actual goals
 HOME_ADV = 1.12
@@ -164,43 +173,74 @@ def fixture_lambdas(
 # ---------------------------------------------------------------- player rates
 
 
-def _position_priors(world: World) -> dict[int, dict[str, float]]:
-    """Per-90 rates for an average regular at each position (used when a player has no past)."""
-    acc: dict[int, dict[str, float]] = {p: {} for p in R.POS_NAME}
-    mins: dict[int, float] = {p: 0.0 for p in R.POS_NAME}
-    for pid, rows in world.history.items():
-        p = world.players.get(pid)
-        if not p:
-            continue
-        for r in rows:
-            if r["minutes"] <= 0:
-                continue
-            mins[p.pos] += r["minutes"]
-            for k in (
-                "expected_goals",
-                "expected_assists",
-                "saves",
-                "bonus",
-                "yellow_cards",
-            ):
-                acc[p.pos][k] = acc[p.pos].get(k, 0.0) + _fl(r[k])
-    defaults = {
-        "expected_goals": 0.1,
-        "expected_assists": 0.08,
-        "saves": 0,
-        "bonus": 0.2,
-        "yellow_cards": 0.1,
-    }
+def _usable_past(world: World, pid: int) -> dict | None:
+    return world.past.get(pid)
+
+
+_RATE_KEYS = ("expected_goals", "expected_assists", "saves", "bonus", "yellow_cards")
+_RATE_DEFAULTS = {
+    "expected_goals": 0.1,
+    "expected_assists": 0.08,
+    "saves": 0.0,
+    "bonus": 0.2,
+    "yellow_cards": 0.1,
+}
+
+
+def price_band(price: float) -> int:
+    """Index of the price band a player falls in (see PRICE_BANDS)."""
+    return sum(price >= b for b in PRICE_BANDS)
+
+
+def _position_priors(world: World) -> dict[tuple[int, int], dict[str, float]]:
+    """Per-90 rates for a typical player of each position and price band, as {(pos, band): rates}.
+
+    Pools this season's matches and last season's totals of every player now in the game. A
+    band with too few minutes borrows from its whole position. The position-wide figure is under
+    band -1. These are the population priors every player's own numbers are shrunk toward.
+    """
+    acc: dict[tuple[int, int], dict[str, float]] = {}
+    mins: dict[tuple[int, int], float] = {}
+
+    def add(key, minutes, stats):
+        mins[key] = mins.get(key, 0.0) + minutes
+        a = acc.setdefault(key, {})
+        for k in _RATE_KEYS:
+            a[k] = a.get(k, 0.0) + _fl(stats.get(k, 0))
+
+    for pid, p in world.players.items():
+        keys = ((p.pos, -1), (p.pos, price_band(p.price)))
+        for r in world.history.get(pid, []):
+            if r["minutes"] > 0:
+                for key in keys:
+                    add(key, r["minutes"], r)
+        past = _usable_past(world, pid)
+        if past and past.get("minutes", 0) > 0:
+            for key in keys:
+                add(key, past["minutes"], past)
     out = {}
-    for p in R.POS_NAME:
-        m = mins[p]
-        out[p] = {
-            k: (acc[p].get(k, 0.0) / m * 90 if m > 450 else v)
-            for k, v in defaults.items()
+    for pos in R.POS_NAME:
+        m = mins.get((pos, -1), 0.0)
+        base = {
+            k: (acc[(pos, -1)][k] / m * 90 if m > 450 else v)
+            for k, v in _RATE_DEFAULTS.items()
         }
-        if p == R.GKP and m <= 450:
-            out[p]["saves"] = 2.7
+        if pos == R.GKP and m <= 450:
+            base["saves"] = 2.7
+        out[(pos, -1)] = base
+        for band in range(len(PRICE_BANDS) + 1):
+            mb = mins.get((pos, band), 0.0)
+            if mb < BAND_MIN_MINUTES:
+                out[(pos, band)] = base
+                continue
+            out[(pos, band)] = {k: acc[(pos, band)][k] / mb * 90 for k in _RATE_KEYS}
     return out
+
+
+def population_prior(
+    priors: dict[tuple[int, int], dict[str, float]], player: Player
+) -> dict[str, float]:
+    return priors[(player.pos, price_band(player.price))]
 
 
 def _started(r: dict) -> bool:
@@ -329,7 +369,13 @@ def player_rates(
     prior_dc90 = None
     if past and past.get("minutes", 0) >= 450:
         pm = past["minutes"]
-        prior_rates = {k: _fl(past.get(k, 0)) / pm * 90 for k in sums}
+        # Last season is itself a sample: shrink it toward players of his position and price.
+        prior_rates = {
+            k: (_fl(past.get(k, 0)) + pos_prior[k] * POP_PRIOR_MINUTES / 90)
+            / (pm + POP_PRIOR_MINUTES)
+            * 90
+            for k in sums
+        }
         prior_mins = min(pm, PRIOR_MINUTES_CAP) * PRIOR_WEIGHT
         prior_dc90 = _fl(past.get("defensive_contribution", 0)) / pm * 90
 
@@ -578,7 +624,9 @@ def project(
     avail_first: dict[int, float] = {}
     for pid, p in world.players.items():
         rows = world.history.get(pid, [])
-        rates = player_rates(p, rows, world.past.get(pid), priors[p.pos])
+        rates = player_rates(
+            p, rows, _usable_past(world, pid), population_prior(priors, p)
+        )
         team_attack = ratings[p.team].attack
         ps = sig.players.get(pid) if live else None
         first_fixtures = [f for f in by_team.get(p.team, []) if f.event == first]
