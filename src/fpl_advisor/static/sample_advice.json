@@ -18,11 +18,14 @@
     10,
     11,
     12,
-    13
+    13,
+    14,
+    15,
+    16
   ],
   "initial": false,
   "transfers": {
-    "headline": "**Make 5 transfers** (you have 5 free).",
+    "headline": "**Make 5 transfers** (you have 5 free). Doing them now rather than waiting is worth +21.4 points in the plan (after any hit, and counting the free transfer they use).",
     "initial": false,
     "free_transfers": 5,
     "count": 5,
@@ -67,7 +70,13 @@
         },
         "gain": 11.2,
         "why_out": "Hip injury - 75% chance of playing",
-        "why_in": "27.2 expected points over 5 weeks; fixtures LIV(a) HUL(H) NEW(a); owned by 0% of your rivals."
+        "why_in": "27.2 expected points over 8 weeks; fixtures LIV(a) HUL(H) NEW(a); owned by 0% of your rivals.",
+        "xp_difference": 11.2,
+        "money": -2.2,
+        "confidence": {
+          "level": "strong",
+          "p_beats_hold": 0.92
+        }
       },
       {
         "out": {
@@ -103,9 +112,15 @@
           "elite_own": 0.31,
           "p_goal": 0.09
         },
-        "gain": 9.3,
-        "why_out": "only 12.8 expected points over the next 5 weeks (CHE(a) AVL(H) LIV(a))",
-        "why_in": "22.1 expected points over 5 weeks; fixtures CRY(H) LEE(a) IPS(H); owned by 8% of your rivals."
+        "gain": 7.8,
+        "why_out": "only 12.8 expected points over the next 8 weeks (CHE(a) AVL(H) LIV(a))",
+        "why_in": "22.1 expected points over 8 weeks; fixtures CRY(H) LEE(a) IPS(H); owned by 8% of your rivals.",
+        "xp_difference": 9.3,
+        "money": -0.2,
+        "confidence": {
+          "level": "close call",
+          "p_beats_hold": 0.56
+        }
       },
       {
         "out": {
@@ -143,7 +158,13 @@
         },
         "gain": 17.5,
         "why_out": "Hamstring injury - Unknown return date",
-        "why_in": "22.1 expected points over 5 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 8% of your rivals."
+        "why_in": "22.1 expected points over 8 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 8% of your rivals.",
+        "xp_difference": 17.5,
+        "money": -1.4,
+        "confidence": {
+          "level": "strong",
+          "p_beats_hold": 0.88
+        }
       },
       {
         "out": {
@@ -180,8 +201,14 @@
           "p_goal": 0.22
         },
         "gain": 18.6,
-        "why_out": "only 5.8 expected points over the next 5 weeks (EVE(H) FUL(a) ARS(H))",
-        "why_in": "24.4 expected points over 5 weeks; fixtures LEE(H) IPS(a) NFO(H); owned by 17% of your rivals."
+        "why_out": "only 5.8 expected points over the next 8 weeks (EVE(H) FUL(a) ARS(H))",
+        "why_in": "24.4 expected points over 8 weeks; fixtures LEE(H) IPS(a) NFO(H); owned by 17% of your rivals.",
+        "xp_difference": 18.6,
+        "money": -0.4,
+        "confidence": {
+          "level": "likely",
+          "p_beats_hold": 0.74
+        }
       },
       {
         "out": {
@@ -219,11 +246,114 @@
         },
         "gain": 9.9,
         "why_out": "Thigh injury - Unknown return date",
-        "why_in": "17.9 expected points over 5 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 0% of your rivals."
+        "why_in": "17.9 expected points over 8 weeks; fixtures NEW(a) COV(H) BRE(a); owned by 0% of your rivals.",
+        "xp_difference": 9.9,
+        "money": 2.0,
+        "confidence": {
+          "level": "likely",
+          "p_beats_hold": 0.69
+        }
       }
     ],
     "squad": [],
-    "bank_after": 0.1
+    "bank_after": 0.1,
+    "value_of_moves": 21.4,
+    "confidence": {
+      "level": "likely",
+      "p_beats_hold": 0.81
+    },
+    "pencilled": [
+      {
+        "gameweek": 11,
+        "free_transfers": 1,
+        "hits": 0,
+        "chip": null,
+        "chip_code": null,
+        "moves": [
+          {
+            "out": {
+              "id": 557,
+              "name": "Tzolis",
+              "team": "ARS",
+              "pos": "MID",
+              "price": 6.1,
+              "xp_next": 1.1,
+              "xp_horizon": 7.2,
+              "fixtures": "LIV(a) HUL(H) NEW(a)",
+              "next_fixture": "LIV(a)",
+              "status": "d",
+              "chance": 75,
+              "news": "Hamstring injury - 75% chance of playing",
+              "price_move": null,
+              "sell_price": 6.1
+            },
+            "in": {
+              "id": 124,
+              "name": "Groß",
+              "team": "BHA",
+              "pos": "MID",
+              "price": 6.2,
+              "xp_next": 3.2,
+              "xp_horizon": 17.4,
+              "fixtures": "MCI(a) BRE(H) HUL(a)",
+              "next_fixture": "MCI(a)",
+              "status": "a",
+              "chance": null,
+              "news": "",
+              "price_move": null
+            },
+            "gain": 2.1,
+            "money": -0.1
+          }
+        ],
+        "bank_after": 0.0
+      },
+      {
+        "gameweek": 13,
+        "free_transfers": 1,
+        "hits": 0,
+        "chip": null,
+        "chip_code": null,
+        "moves": [
+          {
+            "out": {
+              "id": 427,
+              "name": "Mbeumo",
+              "team": "MUN",
+              "pos": "MID",
+              "price": 7.9,
+              "xp_next": 4.7,
+              "xp_horizon": 24.5,
+              "fixtures": "CHE(a) AVL(H) LIV(a)",
+              "next_fixture": "CHE(a)",
+              "status": "a",
+              "chance": null,
+              "news": "",
+              "price_move": null,
+              "sell_price": 7.9
+            },
+            "in": {
+              "id": 15,
+              "name": "Ødegaard",
+              "team": "ARS",
+              "pos": "MID",
+              "price": 6.7,
+              "xp_next": 3.1,
+              "xp_horizon": 17.2,
+              "fixtures": "LIV(a) HUL(H) NEW(a)",
+              "next_fixture": "LIV(a)",
+              "status": "a",
+              "chance": null,
+              "news": "",
+              "price_move": null
+            },
+            "gain": 1.4,
+            "money": 1.2
+          }
+        ],
+        "bank_after": 1.2
+      }
+    ]
   },
   "captain": {
     "captain": {
@@ -304,7 +434,8 @@
         "price_move": "rise"
       }
     ],
-    "note": "67% of your rivals captained Haaland last week. Captaining them too means their big score can't open a gap on you."
+    "note": "67% of your rivals captained Haaland last week. Captaining them too means their big score can't open a gap on you.",
+    "reason_league": "Captaining Haaland gives you the best chance of winning the league: 22% of simulated seasons, against 19% with Palmer."
   },
   "lineup": {
     "xi": [
@@ -787,7 +918,7 @@
       "name": "Wildcard",
       "play_now": false,
       "expires_gw": 19,
-      "reason": "Rebuilding your whole squad would add about +3.4 expected points over the next 5 weeks compared with your best normal transfers (12 changes). That's below the 15-point bar, so keep it. Wildcards are best used when you have several problems at once, like injuries or many players with bad fixtures."
+      "reason": "Rebuilding your whole squad would add about +3.4 expected points over the next 8 weeks compared with your best normal transfers (12 changes). That's below the 15-point bar, so keep it. Wildcards are best used when you have several problems at once, like injuries or many players with bad fixtures."
     },
     {
       "chip": "freehit",
@@ -1128,7 +1259,63 @@
           "Triple Captain"
         ]
       }
-    ]
+    ],
+    "win_odds": {
+      "me": 0.22,
+      "rows": [
+        {
+          "entry": 1000,
+          "name": "Rival 1",
+          "p_first": 0.38
+        },
+        {
+          "entry": 1234567,
+          "name": "You",
+          "p_first": 0.22
+        },
+        {
+          "entry": 1002,
+          "name": "Rival 3",
+          "p_first": 0.11
+        },
+        {
+          "entry": 1003,
+          "name": "Rival 4",
+          "p_first": 0.09
+        },
+        {
+          "entry": 1004,
+          "name": "Rival 5",
+          "p_first": 0.08
+        },
+        {
+          "entry": 1005,
+          "name": "Rival 6",
+          "p_first": 0.05
+        },
+        {
+          "entry": 1006,
+          "name": "Rival 7",
+          "p_first": 0.03
+        },
+        {
+          "entry": 1007,
+          "name": "Rival 8",
+          "p_first": 0.02
+        },
+        {
+          "entry": 1008,
+          "name": "Rival 9",
+          "p_first": 0.01
+        },
+        {
+          "entry": 1009,
+          "name": "Rival 10",
+          "p_first": 0.01
+        }
+      ],
+      "sentence": "You win this league in about 22% of simulated seasons and typically finish around 2nd. Rival 1 is the biggest threat at 38%."
+    }
   },
   "notes": [
     "FPL only shows your squad after each deadline, so transfers you've already made for this gameweek aren't counted here."

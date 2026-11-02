@@ -72,6 +72,60 @@ function Hero({ L, d }: { L: LeagueT; d: Advice }) {
   );
 }
 
+/** "22%", or "<1%" for a chance that is real but tiny. */
+const chance = (p?: number) => (!isNum(p) ? "–" : p > 0 && p < 0.005 ? "<1%" : pct(p));
+
+function WinOdds({ L, d, className = "" }: { L: LeagueT; d: Advice; className?: string }) {
+  const w = L.win_odds;
+  if (!w || !isNum(w.me)) return null;
+  const meName = (L.table || []).find((r) => r.is_me)?.manager;
+  const isMe = (r: { entry?: number | string; name?: string }) =>
+    (r.entry != null && r.entry === d.team?.id) || (!!r.name && (r.name === meName || r.name === "You"));
+  const rivals = (w.rows || [])
+    .filter((r) => r && isNum(r.p_first) && !isMe(r))
+    .sort((a, b) => b.p_first! - a.p_first!)
+    .slice(0, 5);
+  return (
+    <Section
+      title="Chance of winning the league"
+      sub="From simulating the rest of the season many times"
+      className={className}
+    >
+      <div className="flex items-end gap-3 pt-2">
+        <span className="num text-[64px] leading-[0.9] font-semibold tracking-[-0.03em] text-grass-ink">
+          <CountUp value={Math.round(w.me * 100)} decimals={0} />%
+        </span>
+        <span className="pb-1.5 text-[15px] text-fg-2">You</span>
+      </div>
+      <Meter value={w.me} className="mt-4 h-2" />
+      {rivals.length > 0 && (
+        <>
+          <h3 className="mt-7 mb-1 text-[13px] text-fg-3">Rivals most likely to win</h3>
+          <m.ol variants={list} initial="hidden" animate="show">
+            {rivals.map((r, i) => (
+              <m.li
+                key={`${r.entry ?? r.name}`}
+                variants={item}
+                className="grid grid-cols-[1.25rem_minmax(0,1fr)_minmax(4rem,7rem)_2.75rem] items-center gap-3 border-t border-line py-3 first:border-t-0"
+              >
+                <span className="num text-[13px] text-fg-3">{i + 1}</span>
+                <span className="truncate text-[16px] font-medium">{r.name}</span>
+                <Meter value={r.p_first!} tone="fg" delay={0.1 + i * 0.04} />
+                <span className="num text-right text-[17px] font-semibold">{chance(r.p_first)}</span>
+              </m.li>
+            ))}
+          </m.ol>
+        </>
+      )}
+      {w.sentence && (
+        <p className="mt-4 text-[15px] leading-relaxed text-fg-2">
+          <Md text={w.sentence} />
+        </p>
+      )}
+    </Section>
+  );
+}
+
 function Standings({ L }: { L: LeagueT }) {
   const table = L.table || [];
   const chipsBy = new Map((L.rival_chips || []).filter((r) => Array.isArray(r?.chips)).map((r) => [r.manager, r.chips]));
@@ -301,9 +355,12 @@ export function League({ d }: { d: Advice }) {
   return (
     <div className="mx-auto w-full max-w-[640px] px-5 pb-8 md:px-0 desk:max-w-[1120px] desk:px-8">
       <Hero L={L} d={d} />
+      {/* Phones and tablets: right under your position. Desktop: top of the right column. */}
+      <WinOdds L={L} d={d} className="mt-16 md:mt-20 desk:hidden" />
       <div className="desk:grid desk:grid-cols-[minmax(0,1fr)_400px] desk:gap-x-24">
         <Standings L={L} />
         <div>
+          <WinOdds L={L} d={d} className="mt-24 hidden desk:block" />
           <Target L={L} d={d} />
           <Ownership L={L} d={d} />
         </div>

@@ -31,12 +31,35 @@ export interface Player {
   ownership?: number;
 }
 
+/** How often a decision beat holding when the plan was re-solved on perturbed forecasts. */
+export interface Confidence {
+  level?: "strong" | "likely" | "close call" | string;
+  p_beats_hold?: number;
+}
+
 export interface Move {
   out?: Player;
   in?: Player;
+  /** The gain as the plan counts it (weighted weeks, the role the plan gives him). */
   gain?: number;
+  /** The plain difference in expected points over the horizon. */
+  xp_difference?: number;
+  /** Change to the bank: positive frees money, negative costs money. */
+  money?: number;
+  confidence?: Confidence | null;
   why_out?: string;
   why_in?: string;
+}
+
+/** A later week of the plan: moves and a chip pencilled in, not advice to act on yet. */
+export interface PlanWeek {
+  gameweek?: number;
+  free_transfers?: number;
+  hits?: number;
+  chip?: string | null;
+  chip_code?: string | null;
+  moves?: Move[];
+  bank_after?: number;
 }
 
 export interface Transfers {
@@ -50,6 +73,10 @@ export interface Transfers {
   moves?: Move[];
   squad?: Player[];
   bank_after?: number;
+  /** The plan's value minus the best plan that makes no move this week. */
+  value_of_moves?: number | null;
+  pencilled?: PlanWeek[];
+  confidence?: Confidence | null;
 }
 
 export interface Sheet {
@@ -99,6 +126,14 @@ export interface League {
   threats?: Player[];
   differentials?: Player[];
   rival_chips?: { manager: string; chips: string[] }[];
+  win_odds?: WinOdds | null;
+}
+
+/** P(finish 1st) from simulating the rest of the season for you and your rivals. */
+export interface WinOdds {
+  me?: number;
+  rows?: { entry?: number | string; name?: string; p_first?: number }[];
+  sentence?: string;
 }
 
 export interface Elite {
@@ -186,6 +221,7 @@ export interface Advice {
     multiplier?: number;
     options?: Player[];
     note?: string | null;
+    reason_league?: string | null;
   } | null;
   lineup?: Lineup | null;
   chips?: Chip[];

@@ -1,6 +1,6 @@
 import { m, type Variants } from "motion/react";
 import type { ReactNode } from "react";
-import { availability, clamp01 } from "../lib/format";
+import { availability, clamp01, CONF_LABEL, type ConfKey } from "../lib/format";
 import type { Player } from "../lib/types";
 
 export const list: Variants = {
@@ -125,6 +125,27 @@ export function Rise({ dir }: { dir?: "rise" | "fall" | null }) {
       <span className="sr-only">Price likely to {dir} tonight</span>
     </span>
   );
+}
+
+/** Confidence as filled dots: three for strong, two for likely, one (amber) for a close call. */
+export function ConfDots({ k, className = "" }: { k: ConfKey; className?: string }) {
+  const n = k === "strong" ? 3 : k === "likely" ? 2 : 1;
+  const on = k === "close" ? "bg-amber-dot" : "bg-grass";
+  return (
+    <span aria-hidden="true" className={`inline-flex items-center gap-[3px] ${className}`}>
+      {[0, 1, 2].map((i) => (
+        <span key={i} className={`inline-block size-[6px] rounded-full ${i < n ? on : "bg-line-2"}`} />
+      ))}
+    </span>
+  );
+}
+
+/** Legend items for the confidence dots, only for the levels actually shown. */
+export function confLegend(keys: Iterable<ConfKey | null | undefined>): [ReactNode, string][] {
+  const have = new Set(keys);
+  return (["strong", "likely", "close"] as ConfKey[])
+    .filter((k) => have.has(k))
+    .map((k) => [<ConfDots key={k} k={k} />, CONF_LABEL[k]]);
 }
 
 /** A thin horizontal meter. */
