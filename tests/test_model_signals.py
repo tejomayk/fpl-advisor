@@ -141,16 +141,19 @@ def test_evidence_lines_in_plain_words():
     assert evidence(a, 3) == []
 
 
-def test_elite_ownership_is_a_small_nudge_next_gameweek_only():
+def test_elite_ownership_never_changes_expected_points():
+    # It used to add up to ~1 point next gameweek, enough to flip captain picks to the template.
+    from fpl_advisor.model import elite_signal
     from fpl_advisor.signals import EliteSummary
 
     w = make_world()
-    p = mid(w)
-    base = project(w, GWS)[p.id]
+    p, q = mid(w), mid(w, team=2)
+    base = project(w, GWS)
     s = Signals(
-        players={p.id: PlayerSignal(elite_own=0.9)},
+        players={p.id: PlayerSignal(elite_own=0.9), q.id: PlayerSignal(elite_own=0.1)},
         elite=EliteSummary(managers=100, gameweek=3, seasons=[]),
     )
-    got = project(w, GWS, signals=s)[p.id]
-    assert 0 < got[4] - base[4] <= 1.0
-    assert got[5] == pytest.approx(base[5])
+    assert project(w, GWS, signals=s) == base
+    sig = elite_signal(s)
+    assert sig[p.id] == pytest.approx(0.4) and sig[q.id] == pytest.approx(-0.4)
+    assert elite_signal(Signals()) == {}

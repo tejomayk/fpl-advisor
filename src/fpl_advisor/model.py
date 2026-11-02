@@ -65,10 +65,6 @@ LEAGUE_GOALS_PER_TEAM = 1.35  # fallback before any matches are played
 # our own estimate in the mix. Revisit once a season of live results exists.
 ODDS_FIXTURE_WEIGHT = 0.6  # weight on bookmaker goal expectancy vs our team ratings
 ODDS_PLAYER_WEIGHT = 0.5  # weight on bookmaker scorer/assist odds vs our player rates
-# Points per unit of elite ownership above average, next gameweek only. scripts/elite_backtest.py
-# (GW3-8, 2026/27): beta 2 lifted top-30 picks from 4.11 to 4.46 pts with flat correlation, but
-# the elite are drawn from this season's top 50k (some leakage), so we use half of that.
-ELITE_WEIGHT = 1.0
 # Team news is LLM-read from articles that may be days old, so it is trusted only so far:
 NEWS_MIN_WHEN_FPL_CLEAR = (
     0.5  # news alone can at most halve the chance of a player FPL lists as fit
@@ -643,6 +639,9 @@ def project(
     """Expected points for every player for each gameweek in `gameweeks`: {player_id: {gw: xp}}.
 
     `signals` (odds, team news) only change the first gameweek: they describe the next match.
+    What the elite managers own is not a forecast of points and never enters these numbers (it
+    used to add up to ~1 point, enough to flip captain picks toward the template); see
+    `elite_signal` for it as a separate input.
     """
     ratings, avg = team_ratings(world)
     priors = _position_priors(world)
@@ -658,8 +657,7 @@ def project(
 
     sig = signals or Signals()
     first = gameweeks[0] if gameweeks else None
-    # Odds and news describe one gameweek; ignore them once it has passed (elite ownership is
-    # about squads, not a match, so it still applies).
+    # Odds and news describe one gameweek; ignore them once it has passed.
     live = sig.gameweek in (None, first)
     lambdas: dict[int, tuple[float, float]] = {}
     for fs in by_team.values():
@@ -675,7 +673,6 @@ def project(
             lambdas[f.id] = (lam_h, lam_a)
 
     out: dict[int, dict[int, float]] = {}
-    avail_first: dict[int, float] = {}
     for pid, p in world.players.items():
         rows = world.history.get(pid, [])
         rates = player_rates(
@@ -715,15 +712,26 @@ def project(
                 avail = availability(p, offset, back.get(pid))
                 if offset == 0 and ps and ps.p_available is not None:
                     avail = _news_availability(p, avail, ps.p_available)
-            if offset == 0:
-                avail_first[pid] = avail
             xp[f.event] += avail * pts
         out[pid] = xp
-    if first is not None and sig.elite:
-        owns = [s.elite_own or 0.0 for s in sig.players.values()]
-        mean = sum(owns) / max(1, len(world.players))
-        for pid, ps in sig.players.items():
-            if ps.elite_own is not None and out.get(pid, {}).get(first, 0) > 0:
-                nudge = ELITE_WEIGHT * (ps.elite_own - mean) * avail_first.get(pid, 0.0)
-                out[pid][first] = max(0.0, out[pid][first] + nudge)
     return out
+
+
+def elite_signal(signals: Signals | None) -> dict[int, float]:
+    """Share of the elite managers who own each player, minus the average share: {player_id: x}.
+
+    A separate signal, never part of expected points and never a reason to captain someone.
+    Later stages may use it as ownership for the league objective (covering the template) or as
+    a tie-break; it is in-sample this season (scripts/elite_backtest.py) and double-counts xG.
+    """
+    if not signals or not signals.elite:
+        return {}
+    owns = {
+        pid: s.elite_own
+        for pid, s in signals.players.items()
+        if s.elite_own is not None
+    }
+    if not owns:
+        return {}
+    mean = sum(owns.values()) / len(owns)
+    return {pid: o - mean for pid, o in owns.items()}
