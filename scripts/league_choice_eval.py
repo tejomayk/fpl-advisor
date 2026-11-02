@@ -187,7 +187,14 @@ def main():
         "--start", type=int, default=10, help="first gameweek the policies play"
     )
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--switch-se",
+        type=float,
+        default=LC.SWITCH_SE,
+        help="standard errors of P(1st) gain needed to switch captain",
+    )
     args = ap.parse_args()
+    LC.SWITCH_SE = args.switch_se
     rng = np.random.default_rng(args.seed)
     rows: list[dict] = []
     for name in args.season or sorted(PREVIOUS):

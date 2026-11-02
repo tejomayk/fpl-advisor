@@ -30,9 +30,13 @@ from .model import PointsDist
 from .optimise import Move, Plan
 
 # Make this week's moves only when they beat holding in at least this share of forecast errors.
-MOVE_CONFIDENCE = 0.5
 # Take a hit only when the plan with it beats the best plan without it this often.
-HIT_CONFIDENCE = 0.5
+# Tuned on the 2025-26 season sim (1% jitter, seeds 1-6; scripts/season_sim.py --set): pairs
+# (0.5, 0.5), (0.55, 0.65), (0.6, 0.7), (0.65, 0.75), (0.7, 0.8) gave 2192, 2182, 2195, 2186, 2204
+# (standard error of a difference ~20). Differences are within noise; (0.7, 0.8) scored best and
+# cuts hits from 5 a season to 0.5. Checked on 2023-24 and 2024-25 (docs/model-plan.md).
+MOVE_CONFIDENCE = 0.7
+HIT_CONFIDENCE = 0.8
 # Labels for users, on the chance the recommendation is right.
 STRONG = 0.85
 LIKELY = 0.65
