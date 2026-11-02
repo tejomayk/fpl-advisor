@@ -25,6 +25,19 @@ PRIOR_WEIGHT = 0.6  # multiplier on past-season minutes when used as prior
 FALLBACK_PRIOR_MINUTES = (
     360.0  # prior strength when only a position/price prior is available
 )
+# Start model (start_model). Backtest (2026/27 GW3-8 and three past seasons): half-life 3 with a
+# 1-match prior beat 8 and 3 on start Brier, correlation and MAE in all four; later gameweeks
+# revert toward a slower rate so the plan doesn't churn on one benching.
+START_HALF_LIFE = 3.0  # recency weighting of starts, in matches
+START_PRIOR_GAMES = 1.0  # weight of last season's start rate, in matches
+START_LONG_HALF_LIFE = 8.0  # the long-run start rate later gameweeks revert to
+START_LONG_PRIOR_GAMES = 3.0
+START_REVERSION = 0.5  # share of the gap to the long-run rate left after each gameweek
+START_PRIOR_APP_WEIGHT = 0.5  # blend of starts per appearance with starts per 38
+NO_PAST_START_PRIOR = 0.5  # prior for a player with no usable last season
+NO_HISTORY_START = 0.05  # no matches this season and no past: a fringe player
+SUB_PRIOR = 0.3  # P(comes on | not started), outfield
+GK_SUB_PRIOR = 0.02  # goalkeepers almost never come off the bench
 TEAM_PRIOR_GAMES = 4.0  # shrink team ratings toward the league average
 XG_SHARE = 0.7  # team ratings: weight on xG vs actual goals
 HOME_ADV = 1.12
@@ -58,6 +71,7 @@ class Rates:
     bonus90: float
     yc90: float
     dc_hit: float  # P(reaches defensive-contribution threshold | start)
+    start_rate_long: float | None = None  # long-run start rate later gameweeks drift to
 
 
 @dataclass
@@ -189,19 +203,112 @@ def _position_priors(world: World) -> dict[int, dict[str, float]]:
     return out
 
 
+def _started(r: dict) -> bool:
+    return r.get("starts", 0) > 0 or r["minutes"] >= 60
+
+
+def _flagged(player: Player) -> bool:
+    """FPL lists the player as less than fully fit (injured, doubtful, suspended, away...)."""
+    return player.status != "a" or (
+        player.chance_next is not None and player.chance_next < 100
+    )
+
+
+def absent_rows(player: Player, rows: list[dict]) -> set[int]:
+    """Indexes of `rows` (in match order) to leave out of his start rate as absences.
+
+    FPL's match history has no injury flags, so a 0-minute row is either "unused or dropped" or
+    "not available". The one case we can tell apart is the run of 0-minute matches he is in now
+    while FPL flags him: that is injury or suspension, and `availability` already counts it, so
+    also counting it as "not picked" would double-count. Leaving out past runs that ended in a
+    return (likely injuries) was tried and lost in the season replay: players coming back are
+    often eased in, so their old start rate overstates the next few weeks.
+    """
+    if not _flagged(player):
+        return set()
+    out: set[int] = set()
+    for i in range(len(rows) - 1, -1, -1):
+        if rows[i]["minutes"] > 0:
+            break
+        out.add(i)
+    return out
+
+
+def start_prior(player: Player, past: dict | None) -> float:
+    """Prior chance of starting, from last season: starts per league match.
+
+    Starts per match he was fit for (minutes / ~85) sounds better for injured regulars but
+    backtested worse on all four seasons: it rates every squad player who started when fit as
+    nailed. In-season absences are handled by `absent_rows` instead.
+    """
+    if past and past.get("minutes", 0) >= 450:
+        starts = past.get("starts", 0)
+        per38 = min(1.0, starts / 38)
+        # Appearances = starts + sub appearances, the latter estimated from spare minutes.
+        subs = max(0.0, past["minutes"] - 80 * starts) / 25
+        per_app = starts / max(1.0, starts + subs)
+        w = START_PRIOR_APP_WEIGHT
+        return w * per_app + (1 - w) * per38
+    return NO_PAST_START_PRIOR
+
+
+def start_model(
+    player: Player, rows: list[dict], past: dict | None
+) -> tuple[float, float, float]:
+    """(next-match start rate, long-run start rate, P(comes on | not started)).
+
+    Start rates are P(start | available): absences (`absent_rows`) are left out, because
+    whether he is fit is `availability`'s job. The next-match rate follows the last few matches
+    closely (half-life `START_HALF_LIFE`); the long-run rate (half-life `START_LONG_HALF_LIFE`)
+    is what later gameweeks drift back to, since a lost place is often won back and a stand-in
+    often loses it again. Both shrink toward last season (see `start_prior`).
+    """
+    sub_prior = GK_SUB_PRIOR if player.pos == R.GKP else SUB_PRIOR
+    if not rows and not past:
+        return NO_HISTORY_START, NO_HISTORY_START, sub_prior
+    skip = absent_rows(player, rows)
+    current = max((r["round"] for r in rows), default=0)
+    prior = start_prior(player, past)
+
+    def rate(half_life: float, prior_games: float) -> tuple[float, float, float]:
+        games = starts = bench = subs = 0.0
+        for i, r in enumerate(rows):
+            if i in skip:
+                continue
+            w = 0.5 ** ((current - r["round"]) / half_life)
+            games += w
+            if _started(r):
+                starts += w
+            else:
+                bench += w
+                subs += w * (r["minutes"] > 0)
+        return (starts + prior * prior_games) / (games + prior_games), bench, subs
+
+    short, bench, subs = rate(START_HALF_LIFE, START_PRIOR_GAMES)
+    long, _, _ = rate(START_LONG_HALF_LIFE, START_LONG_PRIOR_GAMES)
+    return short, long, (subs + sub_prior * 2) / (bench + 2)
+
+
+def start_rate_at(r: Rates, gw_offset: int) -> float:
+    """Start rate `gw_offset` gameweeks after the next one: from the next-match rate toward
+    the long-run rate."""
+    if r.start_rate_long is None or gw_offset <= 0:
+        return r.start_rate
+    k = START_REVERSION**gw_offset
+    return r.start_rate_long + (r.start_rate - r.start_rate_long) * k
+
+
 def player_rates(
     player: Player, rows: list[dict], past: dict | None, pos_prior: dict[str, float]
 ) -> Rates:
     current = max((r["round"] for r in rows), default=0)
-    w_starts = w_games = w_mins = w_sub_games = w_subs = w_s60 = w_dc = 0.0
+    w_starts = w_mins = w_s60 = w_dc = 0.0
     sums = dict.fromkeys(
         ("expected_goals", "expected_assists", "saves", "bonus", "yellow_cards"), 0.0
     )
     for r in rows:
         w = 0.5 ** ((current - r["round"]) / HALF_LIFE_MATCHES)
-        w_games += w
-        started = r.get("starts", 0) > 0 or r["minutes"] >= 60
-        if started:
+        if _started(r):
             w_starts += w
             w_mins += w * r["minutes"]
             w_s60 += w * (r["minutes"] >= 60)
@@ -210,9 +317,6 @@ def player_rates(
                 and r.get("defensive_contribution", 0) >= R.DC_THRESHOLD[player.pos]
             ):
                 w_dc += w
-        else:
-            w_sub_games += w
-            w_subs += w * (r["minutes"] > 0)
         for k in sums:
             sums[k] += w * _fl(r[k])
     all_mins = sum(
@@ -222,13 +326,11 @@ def player_rates(
     # Prior: last season if they played enough, else position average.
     prior_rates = dict(pos_prior)
     prior_mins = FALLBACK_PRIOR_MINUTES
-    prior_start = 0.5
     prior_dc90 = None
     if past and past.get("minutes", 0) >= 450:
         pm = past["minutes"]
         prior_rates = {k: _fl(past.get(k, 0)) / pm * 90 for k in sums}
         prior_mins = min(pm, PRIOR_MINUTES_CAP) * PRIOR_WEIGHT
-        prior_start = min(1.0, past.get("starts", 0) / 38)
         prior_dc90 = _fl(past.get("defensive_contribution", 0)) / pm * 90
 
     rate = {
@@ -236,14 +338,9 @@ def player_rates(
         for k in sums
     }
 
-    k_games = 3.0
-    if w_games or past:
-        start_rate = (w_starts + prior_start * k_games) / (w_games + k_games)
-    else:
-        start_rate = 0.05  # no matches this season and no past: a fringe player
+    start_rate, start_long, sub_rate = start_model(player, rows, past)
     mins_per_start = (w_mins + 80 * 2) / (w_starts + 2)
     p60 = (w_s60 + 0.85 * 2) / (w_starts + 2)
-    sub_rate = (w_subs + 0.3 * 2) / (w_sub_games + 2)
 
     # Defensive contribution: empirical hit rate per start, shrunk to a Poisson estimate.
     dc_hit = 0.0
@@ -272,6 +369,7 @@ def player_rates(
         bonus90=rate["bonus"],
         yc90=rate["yellow_cards"],
         dc_hit=dc_hit,
+        start_rate_long=start_long,
     )
 
 
@@ -491,6 +589,8 @@ def project(
             lam_for, lam_against = (lam_h, lam_a) if home else (lam_a, lam_h)
             offset = gameweeks.index(f.event)
             r = rates
+            if offset > 0:
+                r = replace(rates, start_rate=start_rate_at(rates, offset))
             if offset == 0 and ps and ps.p_start is not None:
                 news_start = min(1.0, max(0.0, ps.p_start))
                 r = replace(
