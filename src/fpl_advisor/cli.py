@@ -239,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p_adv = sub.add_parser("advise", help="print this gameweek's advice")
     p_adv.add_argument(
-        "--horizon", type=int, default=5, help="gameweeks to plan over (default 5)"
+        "--horizon", type=int, default=8, help="gameweeks to plan over (default 8)"
     )
     p_chk = sub.add_parser(
         "check", help="send any alerts that are due (run this hourly)"

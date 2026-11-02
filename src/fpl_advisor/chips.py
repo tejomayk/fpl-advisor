@@ -1,24 +1,43 @@
-"""When to play chips. Each chip's value now is compared with its best expected value later in its window.
+"""When to play chips: each chip's gain this week, against what holding it is worth.
 
-Since 2025/26 there are two of each chip, one per half of the season. An unused first-half chip is lost
-after its deadline gameweek, so as that deadline nears, the bar for playing it drops.
+The transfer plan (optimise.solve) covers the next weeks without chips. For each chip held:
+
+- Triple Captain and Bench Boost are valued on that plan's own squads, week by week (the captain's
+  expected points; the bench's points beyond what the plan already counts for it), so a better
+  week later in the horizon (say a double gameweek after two pencilled-in transfers) is seen.
+- Wildcard and Free Hit are valued by solving the plan again with the chip played this week.
+
+A chip is played this week only if its gain beats both its best later week in the horizon and its
+value kept (`KEEP_VALUE`, shrinking to 0 as its deadline nears). So an expiring chip is used in its
+last week only if it gains something, never forced into a week where it is worth nothing.
+One chip per gameweek. Since 2025/26 there are two of each chip, one per half of the season.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import optimise
 from . import rules as R
-from .optimise import HORIZON_WEIGHTS, Plan, solve
+from .optimise import BENCH_WEIGHTS, Plan, solve
 from .squad import Squad, chip_deadline
 from .world import World
 
-FUTURE_FT_VALUE = (
-    1.5  # rough points a weekly free transfer adds per week it can be used
-)
-WILDCARD_GAIN = 15.0  # expected points over the horizon needed to justify a Wildcard
-FREE_HIT_GAIN = 12.0  # expected points in one gameweek needed to justify a Free Hit
-NEAR_EXPIRY = 2  # gameweeks before the deadline at which the bar drops
+# Points that holding each chip is worth when many weeks of its window remain: roughly what a good
+# later use gives (a double gameweek for Triple Captain and Bench Boost, a blank or double for Free
+# Hit, a planned rebuild for Wildcard). It shrinks linearly over the last KEEP_RAMP_WEEKS weeks.
+KEEP_VALUE = {"wildcard": 20.0, "freehit": 12.0, "bboost": 11.0, "3xc": 10.0}
+KEEP_RAMP_WEEKS = 8
+BETTER_USE = {
+    "3xc": "a double gameweek for a premium player",
+    "bboost": "a double gameweek with four bench players who start",
+    "freehit": "a week when many teams have no match or play twice",
+    "wildcard": "a rebuild when several players need replacing at once",
+}
+# Outside blank/double weeks, a Free Hit is only tried once its keep value is this low.
+FREE_HIT_EVAL_BELOW = 6.0
+# The quick Wildcard check (rebuild, then hold) is at most about this far below the full plan's.
+WILDCARD_QUICK_MARGIN = 8.0
 
 
 @dataclass
@@ -31,7 +50,8 @@ class ChipAdvice:
     expires_gw: int | None
     reason: str
     plan: Plan | None = None  # the squad to field if this chip is played now
-    forced: bool = False  # must be played now or it expires unused
+    forced: bool = False  # played in its last valid week (it would expire otherwise)
+    keep_value: float = 0.0
 
 
 def best_xi(
@@ -71,6 +91,23 @@ def blank_and_double(world: World, gw: int) -> tuple[list[int], list[int]]:
     ]
 
 
+def keep_value(chip: str, g0: int, deadline: int | None) -> float:
+    """What holding a chip past this week is worth: full with many weeks left, 0 in its last week."""
+    full = KEEP_VALUE.get(chip, 0.0)
+    if deadline is None:
+        return full
+    return full * max(0.0, min(1.0, (deadline - g0) / KEEP_RAMP_WEEKS))
+
+
+def _bench_gain(plan: Plan, xp, g: int) -> float:
+    """Bench Boost's extra points: the bench's full points minus what the plan already counts."""
+    out = 0.0
+    for k, p in enumerate(plan.bench[g]):
+        w = BENCH_WEIGHTS[min(k, 3)]
+        out += (1 - w) * xp[p].get(g, 0.0)
+    return out
+
+
 def advise_chips(
     world: World,
     xp: dict[int, dict[int, float]],
@@ -79,187 +116,176 @@ def advise_chips(
     squad: Squad,
     base: Plan,
     multiplier: dict[int, float] | None = None,
+    **solve_kw,
 ) -> list[ChipAdvice]:
+    """One verdict per chip held now. A chip played now carries the plan to field (`plan`)."""
     g0 = window[0]
-    out: list[ChipAdvice] = []
-
-    def expires(name):
-        return chip_deadline(world.chips, name, g0)
+    weeks = [g for g in horizon if g in base.xi]
 
     def name_of(pid):
         return world.players[pid].name
 
+    def resolve(**chip_kw) -> Plan:
+        return solve(
+            world,
+            xp,
+            horizon,
+            squad.players,
+            squad.sell_price,
+            squad.bank,
+            squad.free_transfers,
+            multiplier=multiplier,
+            **{**solve_kw, **chip_kw},
+        )
+
+    blanks, doubles = blank_and_double(world, g0)
+    out: list[ChipAdvice] = []
     for chip in squad.chips_available:
-        dl = expires(chip)
-        last = [g for g in window if dl is None or g <= dl]
-        near = dl is not None and dl - g0 <= NEAR_EXPIRY
+        dl = chip_deadline(world.chips, chip, g0)
+        keep = keep_value(chip, g0, dl)
+        valid = [g for g in weeks if dl is None or g <= dl]
+        expiry = (
+            f" It expires after GW{dl}." if dl is not None and dl <= horizon[-1] else ""
+        )
+        chip_plan = None
+        best_later, later_what = 0.0, ""
 
-        if chip == "3xc":
-            per_gw = {}
-            for g in last:
-                xi, _ = best_xi(
-                    base.squad, world, xp_g={p: xp[p].get(g, 0) for p in base.squad}
+        if chip in ("3xc", "bboost"):
+            if chip == "3xc":
+                per_gw = {g: xp[base.captain[g]].get(g, 0.0) for g in valid}
+            else:
+                per_gw = {g: _bench_gain(base, xp, g) for g in valid}
+            now = per_gw.get(g0, 0.0)
+            later = {
+                g: v * optimise.DECAY ** (g - g0) for g, v in per_gw.items() if g != g0
+            }
+            best_g = max(later, key=later.get) if later else None
+            best_later = later[best_g] if best_g else 0.0
+            play = now > 0 and now >= max(keep, best_later)
+            if chip == "3xc":
+                what = (
+                    f"Triple Captain on {name_of(base.captain[g0])} is worth about "
+                    f"{now:.1f} extra points this week"
                 )
-                cap = max(xi, key=lambda p: xp[p].get(g, 0))
-                per_gw[g] = (cap, xp[cap].get(g, 0))
-            now_cap, now_val = per_gw[g0]
-            best_g = max(per_gw, key=lambda g: per_gw[g][1])
-            play = now_val >= per_gw[best_g][1] - 0.2 or (dl is not None and g0 >= dl)
-            _, dbl = blank_and_double(world, best_g)
-            reason = (
-                f"Triple Captain on {name_of(now_cap)} is worth about {now_val:.1f} extra points this week. "
-                + (
-                    "No week before the chip expires looks better, so use it now."
-                    if play
-                    else f"GW{best_g} looks better ({name_of(per_gw[best_g][0])}, {per_gw[best_g][1]:.1f})"
-                    + (" because of a double gameweek" if dbl else "")
-                    + ", so keep it for then."
-                )
-            )
-            out.append(
-                ChipAdvice(chip, play, now_val, best_g, per_gw[best_g][1], dl, reason)
-            )
-
-        elif chip == "bboost":
-            per_gw = {}
-            for g in last:
-                _, bench = best_xi(
-                    base.squad, world, xp_g={p: xp[p].get(g, 0) for p in base.squad}
-                )
-                per_gw[g] = sum(xp[p].get(g, 0) for p in bench)
-            now_val = per_gw[g0]
-            best_g = max(per_gw, key=per_gw.get)
-            play = now_val >= per_gw[best_g] - 0.3 or (dl is not None and g0 >= dl)
-            reason = (
-                f"Your bench is expected to score about {now_val:.1f} this week. "
-                + (
-                    "That's as good as it gets before the chip expires, so play it."
-                    if play
-                    else f"It looks better in GW{best_g} ({per_gw[best_g]:.1f}), so wait. Bench Boost "
-                    "works best in a double gameweek with four bench players who all start."
-                )
-            )
-            out.append(
-                ChipAdvice(chip, play, now_val, best_g, per_gw[best_g], dl, reason)
-            )
-
-        elif chip == "freehit":
-            fh = solve(
-                world,
-                xp,
-                [g0],
-                squad.players,
-                squad.sell_price,
-                squad.bank,
-                squad.free_transfers,
-                unlimited=True,
-                multiplier=multiplier,
-                weights=[1.0],
-            )
-            # The base week includes the gain from any hit transfers, so charge their cost too.
-            gain = fh.gw_points[g0] - (base.gw_points[g0] - R.HIT_COST * base.hits)
-            blanks, doubles = blank_and_double(world, g0)
-            bar = 5.0 if near else FREE_HIT_GAIN
-            play = gain >= bar
-            later = [g for g in last[1:] if any(blank_and_double(world, g))]
-            reason = (
-                f"A one-week squad would score about {gain:+.1f} more than your planned team this week"
-                + (f" ({len(blanks)} teams have no match)" if blanks else "")
-                + (f" ({len(doubles)} teams play twice)" if doubles else "")
-                + ". "
-                + (
-                    "That's enough to use it."
-                    if play
-                    else "Free Hit is best saved for a week when many teams have no match or play twice"
-                    + (f" (next one: GW{later[0]})" if later else "")
-                    + (
-                        ". It expires soon, though, so use it on your weakest week before then."
-                        if near
-                        else "."
+                if best_g:
+                    later_what = (
+                        f"GW{best_g} looks better ({name_of(base.captain[best_g])}, "
+                        f"{per_gw[best_g]:.1f})"
                     )
-                )
+            else:
+                what = f"Bench Boost adds about {now:.1f} points this week"
+                if best_g:
+                    later_what = (
+                        f"GW{best_g} looks better ({per_gw[best_g]:.1f}) with the squad the "
+                        "plan builds by then"
+                    )
+            if doubles:
+                what += f" ({len(doubles)} teams play twice)"
+            best_value = per_gw[best_g] if best_g else now
+        else:
+            # Wildcard and Free Hit: plan again with the chip this week and compare.
+            try_it = (
+                chip == "wildcard"
+                or bool(blanks or doubles)
+                or keep <= FREE_HIT_EVAL_BELOW
             )
-            out.append(
-                ChipAdvice(
-                    chip,
-                    play,
-                    gain,
-                    later[0] if later else None,
-                    gain,
-                    dl,
-                    reason,
-                    fh,
+            now = 0.0
+            if try_it and chip == "wildcard":
+                # Quick look first: rebuild now and hold that squad (fast to solve). It
+                # undervalues the Wildcard (no later moves), so only a clear miss skips the full
+                # plan; a clear win needs no full plan either.
+                quick = resolve(wildcard_gw=g0, no_transfer_last=len(horizon) - 1)
+                now = quick.objective - base.objective
+                chip_plan = quick
+                if keep - WILDCARD_QUICK_MARGIN < now < keep:
+                    chip_plan = resolve(wildcard_gw=g0)
+                    now = max(now, chip_plan.objective - base.objective)
+            elif try_it:
+                chip_plan = resolve(free_hit_gw=g0)
+                now = chip_plan.objective - base.objective
+            play = try_it and now > 0 and now >= keep
+            best_g = None
+            if chip == "wildcard":
+                n = len(chip_plan.buys) if chip_plan else 0
+                what = (
+                    f"Rebuilding the squad ({n} changes) adds about {now:+.1f} points over "
+                    f"the next {len(horizon)} weeks compared with your planned transfers"
                 )
-            )
+            else:
+                if try_it:
+                    what = (
+                        f"A one-week squad adds about {now:+.1f} points over the plan"
+                        + (f" ({len(blanks)} teams have no match)" if blanks else "")
+                        + (f" ({len(doubles)} teams play twice)" if doubles else "")
+                    )
+                else:
+                    what = "This is a normal week with no blanks or doubles"
+                later = [
+                    g
+                    for g in window[1:]
+                    if any(blank_and_double(world, g)) and (dl is None or g <= dl)
+                ]
+                best_g = later[0] if later else None
+            best_value = now
 
-        elif chip == "wildcard":
-            wc = solve(
-                world,
-                xp,
-                horizon,
-                squad.players,
-                squad.sell_price,
-                squad.bank,
-                squad.free_transfers,
-                unlimited=True,
-                multiplier=multiplier,
-            )
-            w = HORIZON_WEIGHTS[: len(horizon)]
-            # Without the Wildcard you'd still get a free transfer each later week; credit the base
-            # plan for that so the Wildcard isn't flattered.
-            base_val = (
-                sum(wi * base.gw_points[g] for wi, g in zip(w, horizon))
-                - R.HIT_COST * base.hits
-                + FUTURE_FT_VALUE * sum(w[1:])
-            )
-            wc_val = sum(wi * wc.gw_points[g] for wi, g in zip(w, horizon))
-            gain = wc_val - base_val
-            bar = 4.0 if near else WILDCARD_GAIN
-            play = gain >= bar
+        if play:
             reason = (
-                f"Rebuilding your whole squad would add about {gain:+.1f} expected points over the next {len(horizon)} "
-                f"weeks compared with your best normal transfers ({len(wc.buys)} changes). "
+                f"{what}. That beats "
                 + (
-                    "That's worth it: play the Wildcard."
-                    if play
-                    else f"That's below the {bar:.0f}-point bar, so keep it. Wildcards are best used when you have several "
-                    "problems at once, like injuries or many players with bad fixtures."
+                    f"holding it (worth about {keep:.1f})"
+                    if keep > 0
+                    else "letting it expire unused"
                 )
-                + (f" Note: it expires after GW{dl}." if near else "")
+                + (" and every later week in the plan" if best_later else "")
+                + "."
+                + expiry
             )
-            out.append(ChipAdvice(chip, play, gain, None, gain, dl, reason, wc))
-
-    # A chip in its last valid week is forced: play it now or lose it.
-    for a in out:
-        if a.expires_gw is not None and a.expires_gw <= g0 and a.play_now:
-            a.forced = True
-
-    # Chips that would otherwise expire unused: with k chips sharing a deadline and only k weeks
-    # left, one has to go this week. Use the one whose value now is closest to its best later value.
-    by_deadline: dict[int, list[ChipAdvice]] = {}
-    for a in out:
-        if a.expires_gw is not None:
-            by_deadline.setdefault(a.expires_gw, []).append(a)
-    for dl, group in by_deadline.items():
-        weeks_left = dl - g0 + 1
-        if len(group) >= weeks_left and not any(a.play_now for a in group):
-            pick = max(group, key=lambda a: a.value_now - a.best_value)
-            pick.play_now = True
-            pick.forced = True
-            pick.reason += (
-                f" You have {len(group)} chips that expire after GW{dl} and only {weeks_left} "
-                f"week{'s' if weeks_left != 1 else ''} left, so one has to be used now."
+        elif later_what and best_later >= keep and best_later > now:
+            reason = f"{what}. {later_what}, so keep it for then." + expiry
+        else:
+            reason = (
+                f"{what}. Keep it: holding it is worth about {keep:.1f} points"
+                + (f" ({BETTER_USE[chip]} uses it better)." if keep > 0 else ".")
+                + expiry
+                + (
+                    " An expiring chip is only used if it gains something."
+                    if dl is not None and dl <= g0 + 1
+                    else ""
+                )
             )
+        out.append(
+            ChipAdvice(
+                chip,
+                play,
+                round(now, 1),
+                g0 if play else best_g,
+                round(best_value, 1),
+                dl,
+                reason,
+                chip_plan if play else None,
+                forced=play and dl is not None and dl <= g0,
+                keep_value=round(keep, 1),
+            )
+        )
 
-    # Only one chip per gameweek: keep the most valuable "play now" and defer the rest.
+    # Only one chip per gameweek: keep the one that gains most over holding it.
     playing = [a for a in out if a.play_now]
     if len(playing) > 1:
-        keep = max(playing, key=lambda a: (a.forced, a.value_now))
+        pick = max(playing, key=lambda a: (a.forced, a.value_now - a.keep_value))
         for a in playing:
-            if a is not keep:
+            if a is not pick:
                 a.play_now = False
+                a.forced = False
+                a.plan = None
                 a.reason += (
-                    f" (Not this week: {R.CHIP_NAMES[keep.chip]} is worth more, and you can only "
-                    "play one chip a week.)"
+                    f" (Not this week: {R.CHIP_NAMES[pick.chip]} is worth more, and you can "
+                    "only play one chip a week.)"
                 )
+    # Triple Captain and Bench Boost change the line-up the plan should pick: plan with them.
+    for a in out:
+        if a.play_now and a.plan is None:
+            kw = (
+                {"triple_captain_gw": g0} if a.chip == "3xc" else {"bench_boost_gw": g0}
+            )
+            a.plan = resolve(**kw)
     return out

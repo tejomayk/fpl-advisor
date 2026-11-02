@@ -7,10 +7,11 @@ import copy
 from . import rules as R
 from .advise import (
     Advice,
-    _pair_transfers,
     _why_out,
     captain_lines,
     evidence,
+    pencilled_weeks,
+    plan_moves,
     signals_live,
     transfer_lines,
 )
@@ -132,9 +133,10 @@ def _strip(md: str) -> str:
 def _transfers(a: Advice) -> dict:
     lines = transfer_lines(a)
     moves = []
-    for out, inn in _pair_transfers(a):
+    for m in plan_moves(a):
+        out, inn = m.out, m.inn
         po, pi = _player(a, out), _player(a, inn)
-        po["sell_price"] = a.squad.sell_price.get(out, a.world.players[out].price)
+        po["sell_price"] = m.sell_price
         why_in = f"{pi['xp_horizon']:.1f} expected points over {len(a.horizon)} weeks; fixtures {pi['fixtures']}"
         if a.league:
             why_in += f"; owned by {a.league.ownership.get(inn, 0):.0%} of your rivals"
@@ -143,7 +145,11 @@ def _transfers(a: Advice) -> dict:
             {
                 "out": po,
                 "in": pi,
-                "gain": round(pi["xp_horizon"] - po["xp_horizon"], 1),
+                # The gain as the plan counts it: weighted weeks, the role the plan gives him.
+                "gain": m.gain,
+                # The plain difference in expected points over the horizon, for reference.
+                "xp_difference": round(pi["xp_horizon"] - po["xp_horizon"], 1),
+                "money": m.money,  # change to the bank: + frees money, - costs money
                 "why_out": _why_out(a, out),
                 "why_in": why_in + ".",
             }
@@ -163,6 +169,29 @@ def _transfers(a: Advice) -> dict:
         "moves": moves,
         "squad": [_player(a, p) for p in a.plan.squad] if a.initial else [],
         "bank_after": a.plan.bank_after,
+        "value_of_moves": a.value_of_moves,
+        "pencilled": [] if a.initial else [_week(a, wk) for wk in pencilled_weeks(a)],
+    }
+
+
+def _week(a: Advice, wk) -> dict:
+    """A later week of the plan: moves and chip pencilled in, not advice to act on yet."""
+    return {
+        "gameweek": wk.gw,
+        "free_transfers": wk.free_transfers,
+        "hits": wk.hits,
+        "chip": R.CHIP_NAMES[wk.chip] if wk.chip else None,
+        "chip_code": wk.chip,
+        "moves": [
+            {
+                "out": {**_player(a, m.out), "sell_price": m.sell_price},
+                "in": _player(a, m.inn),
+                "gain": m.gain,
+                "money": m.money,
+            }
+            for m in wk.moves
+        ],
+        "bank_after": wk.bank,
     }
 
 
