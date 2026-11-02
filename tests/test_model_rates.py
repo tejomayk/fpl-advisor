@@ -53,3 +53,49 @@ def test_one_hot_season_is_regressed_toward_the_population():
     r = M.player_rates(p, [], hot, M.population_prior(priors, p))
     assert r.xg90 < 0.6
     assert r.xg90 > M.population_prior(priors, p)["expected_goals"]
+
+
+def _preseason_world():
+    """Before GW1: club 1's players had big xG last season, club 2's have no PL past.
+
+    The test world has ~3 players a club, so each carries a whole squad's minutes."""
+    w = make_world()
+    w.history = {}
+    for f in w.fixtures:
+        f.finished, f.home_goals, f.away_goals = False, None, None
+    for p in w.players.values():
+        if p.team == 2:
+            continue
+        strong = p.team == 1
+        w.past[p.id] = {
+            "minutes": 12000,
+            "starts": 28,
+            "expected_goals": "60.0" if strong else "15.0",
+            "expected_assists": "8.0",
+            "expected_goals_conceded": "100.0" if strong else "200.0",
+            "saves": 0,
+            "bonus": 5,
+            "yellow_cards": 3,
+            "defensive_contribution": 0,
+        }
+    return w
+
+
+def test_preseason_ratings_come_from_last_season_and_promoted_sides_start_low():
+    w = _preseason_world()
+    pri = M.team_priors(w)
+    assert pri[1].attack > 1.2 and pri[1].defence < 0.8  # strong attack, tight defence
+    assert pri[2].attack == M.PROMOTED_ATTACK
+    assert pri[2].defence == M.PROMOTED_DEFENCE
+    ratings, _ = M.team_ratings(w)
+    assert ratings[1].attack > ratings[3].attack > ratings[2].attack
+    assert ratings[2].defence > ratings[3].defence > ratings[1].defence
+
+
+def test_preseason_prior_fades_as_results_come_in():
+    pre = _preseason_world()
+    later = make_world()  # three gameweeks played
+    later.past = pre.past
+    r0, avg0 = M.team_ratings(pre)
+    r3, avg3 = M.team_ratings(later)
+    assert abs(r3[2].attack - avg3) < abs(r0[2].attack - avg0)

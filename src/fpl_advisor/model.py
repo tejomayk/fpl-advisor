@@ -47,7 +47,15 @@ POP_PRIOR_MINUTES = 900.0  # weight of the population prior on last season's rat
 # FPL gives ~1.38x as many assists as Opta xA in every season 2023/24-2026/27 (forwards ~2.1x),
 # but scaling xA up made projections worse (bias +0.1 for MID/FWD, no gain in ranking): the
 # extra assists are already offset elsewhere in the formula. Not applied.
-TEAM_PRIOR_GAMES = 4.0  # shrink team ratings toward the league average
+TEAM_PRIOR_GAMES = 4.0
+TEAM_COVERAGE_FULL = (
+    0.6  # share of a season's outfield minutes that counts as a full PL squad
+)
+# A promoted side starts at the level of a typical relegated one, relative to the league average
+# goals per team: relegated sides 2022/23-2024/25 scored 0.98 and conceded 2.26 a match (league
+# ~1.5); promoted sides then scored 0.98 and conceded 1.87.
+PROMOTED_ATTACK = 0.70
+PROMOTED_DEFENCE = 1.35  # shrink team ratings toward the league average
 XG_SHARE = 0.7  # team ratings: weight on xG vs actual goals
 HOME_ADV = 1.12
 LEAGUE_GOALS_PER_TEAM = 1.35  # fallback before any matches are played
@@ -123,8 +131,51 @@ def _fl(x) -> float:
 # ---------------------------------------------------------------- team ratings
 
 
+def team_priors(world: World) -> dict[int, TeamRating]:
+    """Pre-season attack/defence for each club, relative to the league (1.0 = average).
+
+    Built from last season's per-90 xG and xG-conceded of the players now at the club, so
+    transfers count. A club whose squad has little Premier League history (a promoted side)
+    leans toward the level of a typical relegated side instead (PROMOTED_ATTACK/DEFENCE).
+    """
+    acc = {t: [0.0, 0.0, 0.0, 0.0] for t in world.teams}  # xG, outfield mins, xGC, mins
+    for pid, p in world.players.items():
+        past = _usable_past(world, pid)
+        if p.team not in acc or not past or past.get("minutes", 0) <= 0:
+            continue
+        a = acc[p.team]
+        m = past["minutes"]
+        if p.pos != R.GKP:
+            a[0] += _fl(past.get("expected_goals", 0))
+            a[1] += m
+        if "expected_goals_conceded" in past:
+            a[2] += _fl(past["expected_goals_conceded"])
+            a[3] += m
+    att = {t: a[0] / a[1] * 990 for t, a in acc.items() if a[1] > 0}
+    dfc = {t: a[2] / a[3] * 90 for t, a in acc.items() if a[3] > 0}
+    # Normalise by clubs with a full Premier League squad behind them.
+    full = [t for t, a in acc.items() if a[1] >= 38 * 990 * TEAM_COVERAGE_FULL]
+    att_mean = sum(att[t] for t in full) / len(full) if full else 0.0
+    dfc_full = [t for t in full if t in dfc]
+    dfc_mean = sum(dfc[t] for t in dfc_full) / len(dfc_full) if dfc_full else 0.0
+    out = {}
+    for t, a in acc.items():
+        c = min(1.0, a[1] / (38 * 990 * TEAM_COVERAGE_FULL))
+        ra = att[t] / att_mean if att_mean and t in att else PROMOTED_ATTACK
+        rd = dfc[t] / dfc_mean if dfc_mean and t in dfc else PROMOTED_DEFENCE
+        out[t] = TeamRating(
+            attack=c * ra + (1 - c) * PROMOTED_ATTACK,
+            defence=c * rd + (1 - c) * PROMOTED_DEFENCE,
+        )
+    return out
+
+
 def team_ratings(world: World) -> tuple[dict[int, TeamRating], float]:
-    """Attack/defence ratings from finished fixtures (xG blended with goals), plus league average."""
+    """Attack/defence ratings from finished fixtures (xG blended with goals), plus league average.
+
+    Each club starts from its pre-season prior (`team_priors`) worth `TEAM_PRIOR_GAMES` matches,
+    so the prior fades as the season's own results build up.
+    """
     xg_by_side: dict[tuple[int, bool], float] = {}
     for rows in world.history.values():
         for r in rows:
@@ -151,11 +202,14 @@ def team_ratings(world: World) -> tuple[dict[int, TeamRating], float]:
         total_goals += h + a
         n += 2
     avg = total_goals / n if n else LEAGUE_GOALS_PER_TEAM
+    priors = team_priors(world)
     ratings = {}
     for t, (gf, ga, g) in sums.items():
         k = TEAM_PRIOR_GAMES
+        pr = priors.get(t, TeamRating(1.0, 1.0))
         ratings[t] = TeamRating(
-            attack=(gf + avg * k) / (g + k), defence=(ga + avg * k) / (g + k)
+            attack=(gf + avg * pr.attack * k) / (g + k),
+            defence=(ga + avg * pr.defence * k) / (g + k),
         )
     return ratings, avg
 
