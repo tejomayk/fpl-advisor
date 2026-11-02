@@ -69,3 +69,28 @@ signing"), show money cost, and give each move's gain as the plan counts it.
 Rules for every stage: live advice must stay fast enough for the website (target under 10 s per
 request); no paid calls in the sim; no stage ships unless season-sim totals beat the previous
 stage on at least two of three seasons and do not fall on the third by more than noise.
+
+## Stage 3 and 4 results (season sim, 1% jitter, seeds 1-6, `--time-limit 10`)
+
+Stage 3 as built (`robust.py`, `advise.decide`): instead of re-solving on perturbed forecasts,
+the fixed plans (planner's choice, hold, best plan without a hit) are scored on forecasts moved
+by each player's `mean_sd` (one error per player, shared across his gameweeks). The plan value is
+linear in the forecasts, so P(A beats B) is exact for that error model and costs microseconds.
+Rule: take a hit only if P(beats the no-hit plan) >= 0.8; move only if P(beats holding) >= 0.7.
+Tuned on 2025-26; planner constants unchanged (transfer penalty 0.3 lost 56 points, se 16;
+penalty 0 and free-transfer end values x0.7 / x1.5 were within noise but lower).
+
+| season | original | Stage 1+2 | Stage 3 | vs Stage 1+2 (se) | hits/season (was) |
+|---|---|---|---|---|---|
+| 2023-24 | 2367 | 2383 | 2366 | -16.5 (32.1) | 0.0 (3.5) |
+| 2024-25 | 2417 | 2536 | 2549 | +12.5 (13.4) | 0.2 (2.2) |
+| 2025-26 (tuning) | 2166 | 2197 | 2204 | +6.5 (19.4) | 0.5 (4.8) |
+
+All three differences are within noise; the rule mostly removes hits. Live advice: 2-9 s.
+
+Stage 4 as built (`leaguechoice.py`): with a league, the expected-points plan, holding, the plans
+the rule set aside and the next 4 captains are compared on P(1st) with common random numbers;
+switch only when the gain is over 2 standard errors (about 0.2 s). Synthetic leagues
+(`scripts/league_choice_eval.py`, captain only, 150 leagues x 3 seasons x 2 seeds, GW10-38):
+win rate 0.0945 (expected points) vs 0.095 (P(1st)), difference +0.0005 (se ~0.002): no
+measurable gain. Captains switch in 1-5% of league-weeks.
