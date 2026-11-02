@@ -154,6 +154,9 @@ def simulate(
                 initial=True,
                 max_hits=max_hits,
                 multiplier=mult,
+                ft_cap=rules.max_free_transfers,
+                keep_fts_on_chip=rules.keep_fts_on_chip,
+                compare_hold=False,
             )
             plan, chip = dec.plan, None
             adv = Manager(
@@ -175,6 +178,9 @@ def simulate(
                 initial=False,
                 max_hits=max_hits,
                 multiplier=mult,
+                ft_cap=rules.max_free_transfers,
+                keep_fts_on_chip=rules.keep_fts_on_chip,
+                compare_hold=False,
             )
             plan = dec.plan
             chip = dec.chip_now.chip if dec.chip_now else None
@@ -262,6 +268,18 @@ def simulate(
             "hits": sum(r["hits"] for r in adv_rows),
             "hit_points": 4 * sum(r["hits"] for r in adv_rows),
             "transfers": sum(r["transfers"] for r in adv_rows),
+            # Weeks a free transfer was saved (no move, no chip), and weeks one was lost because
+            # the bank of free transfers was already full.
+            "fts_banked": sum(
+                1 for r in adv_rows[1:] if r["transfers"] == 0 and not r["chip"]
+            ),
+            "fts_wasted": sum(
+                1
+                for r in adv_rows[1:]
+                if r["transfers"] == 0
+                and not r["chip"]
+                and r["free_transfers"] == rules.max_free_transfers
+            ),
             "chips": [(r["chip"], r["gw"]) for r in adv_rows if r["chip"]],
             "final_value": adv_rows[-1]["value"],
             "detail": adv_rows,
@@ -278,6 +296,33 @@ def simulate(
     }
 
 
+# ------------------------------------------------------------------ noise
+
+
+def add_jitter(rel: float, seed: int) -> None:
+    """Multiply every projection by (1 + N(0, rel)), seeded by (seed, player, gameweek).
+
+    Single season runs move by tens of points on tiny changes, so a change should be judged on
+    the mean over several seeds. The same seed gives the same noise for the same projection.
+    """
+    import random
+
+    from fpl_advisor import advise
+
+    project = advise.project
+
+    def noisy(world, gws, **kw):
+        xp = project(world, gws, **kw)
+        base = world.next_event.id if world.next_event else 0
+        for pid, by_gw in xp.items():
+            for g in by_gw:
+                rng = random.Random(f"{seed}:{base}:{pid}:{g}")
+                by_gw[g] *= max(0.0, 1 + rng.gauss(0, rel))
+        return xp
+
+    advise.project = noisy
+
+
 # ------------------------------------------------------------------ main
 
 
@@ -292,8 +337,17 @@ def main():
     )
     ap.add_argument("--until", type=int, help="stop after this gameweek")
     ap.add_argument("--out", type=Path, default=CACHE / "season_sim_results.json")
+    ap.add_argument(
+        "--jitter",
+        type=float,
+        default=0.0,
+        help="relative noise on every projection (e.g. 0.01), to see how noisy a total is",
+    )
+    ap.add_argument("--seed", type=int, default=0, help="seed for --jitter")
     args = ap.parse_args()
     optimise.SOLVER_TIME_LIMIT = args.time_limit
+    if args.jitter:
+        add_jitter(args.jitter, args.seed)
 
     results = []
     for season in args.season or sorted(SEASONS):
@@ -324,7 +378,7 @@ def main():
 
     print(
         f"\n{'season':<9}{'GWs':>7}{'advisor':>9}{'set&forget':>12}{'diff':>7}"
-        f"{'transfers':>11}{'hits':>6}{'time':>7}  chips"
+        f"{'transfers':>11}{'hits':>6}{'banked':>8}{'wasted':>8}{'time':>7}  chips"
     )
     for r in results:
         a, s = r["advisor"], r["set_and_forget"]
@@ -332,7 +386,8 @@ def main():
         gw = f"{r['gameweeks'][0]}-{r['gameweeks'][1]}"
         print(
             f"{r['season']:<9}{gw:>7}{a['total']:>9}{s['total']:>12}{a['total'] - s['total']:>+7}"
-            f"{a['transfers']:>11}{a['hits']:>6}{r['runtime_s']:>6}s  {chips}"
+            f"{a['transfers']:>11}{a['hits']:>6}{a.get('fts_banked', 0):>8}"
+            f"{a.get('fts_wasted', 0):>8}{r['runtime_s']:>6}s  {chips}"
         )
         if r["plan_mismatches"]:
             print(f"  plan vs rules mismatches: {r['plan_mismatches']}")
