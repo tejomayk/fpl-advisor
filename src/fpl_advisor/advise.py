@@ -14,23 +14,34 @@ from .league import (
     LeagueError,
     LeagueView,
     load_league,
+    ownership_centre,
     ownership_multiplier,
     risk_lambda,
 )
 from .model import project
-from .optimise import Plan, solve
+from .optimise import (
+    BENCH_BOOST,
+    FREE_HIT,
+    HORIZON,
+    TRIPLE_CAPTAIN,
+    WILDCARD,
+    Plan,
+    solve,
+)
 from .prices import outlook, timing_advice
 from .signals import Signals
 from .squad import STARTING_BUDGET as R_BUDGET
 from .squad import (
     NoHistoryError,
     Squad,
-    chip_deadline,
     chips_available,
     initial_squad,
     load_squad,
 )
 from .world import Event, World, load_world
+
+# Weeks after the horizon used to value the squad left at the end.
+TERMINAL_LOOKAHEAD = 4
 
 
 @dataclass
@@ -51,6 +62,8 @@ class Advice:
     notes: list[str] = field(default_factory=list)
     initial: bool = False  # building a squad from scratch (pre-season or new manager)
     signals: Signals = field(default_factory=Signals)  # odds, team news, elite managers
+    # What this week's moves are worth against making none, in the plan's own terms (after hits).
+    value_of_moves: float | None = None
 
     # ---- helpers
     def name(self, pid: int) -> str:
@@ -83,7 +96,7 @@ def build_advice(
     cfg: Config,
     client: FPLClient,
     now: datetime | None = None,
-    horizon_len: int = 5,
+    horizon_len: int = HORIZON,
     world: World | None = None,
     signals: Signals | None = None,
 ) -> Advice:
@@ -134,7 +147,10 @@ def build_advice(
         initial=initial,
         max_hits=cfg.max_hits,
         multiplier=ownership_multiplier(
-            world.players, league.ownership if league else {}, lam
+            world.players,
+            league.ownership if league else {},
+            lam,
+            ownership_centre(squad.players, league.ownership) if league else 0.5,
         )
         or None,
         horizon_len=horizon_len,
@@ -175,6 +191,7 @@ def build_advice(
     )
     advice.initial = initial
     advice.signals = signals
+    advice.value_of_moves = dec.value_of_moves
     if (
         initial
     ):  # there's no existing squad, so the note about unseen transfers doesn't apply
@@ -195,6 +212,9 @@ class Decision:
     plan: Plan  # the plan to follow (with the chip, if one is played now)
     chips: list[ChipAdvice]
     chip_now: ChipAdvice | None
+    # The plan's value minus the best plan that makes no move this week: what acting now is worth,
+    # after hits and the free transfer it uses. None when there is nothing to compare.
+    value_of_moves: float | None = None
 
 
 def decide(
@@ -204,26 +224,43 @@ def decide(
     initial: bool,
     max_hits: int,
     multiplier: dict[int, float] | None = None,
-    horizon_len: int = 5,
+    horizon_len: int = HORIZON,
     signals: Signals | None = None,
+    ft_cap: int = R.MAX_FREE_TRANSFERS,
+    keep_fts_on_chip: bool = True,
+    compare_hold: bool = True,
 ) -> Decision:
     """Projections, transfers, chips, XI and captain for `world.next_event`.
 
     This is the whole decision path `build_advice` uses; scripts/season_sim.py replays past
-    seasons through it, so a change here is measured on season totals.
+    seasons through it, so a change here is measured on season totals. `ft_cap` and
+    `keep_fts_on_chip` are the season's free-transfer rules (the sim replays older seasons).
     """
     ev = world.next_event
-    # Project far enough to compare each chip with every week left before it expires.
     last_gw = max(e.id for e in world.events)
-    deadlines = [
-        chip_deadline(world.chips, c, ev.id) or last_gw for c in squad.chips_available
-    ]
-    window_end = min(last_gw, max([ev.id + horizon_len - 1, *deadlines]))
-    window = list(range(ev.id, window_end + 1))
-    horizon = window[:horizon_len]
+    horizon = list(range(ev.id, min(last_gw, ev.id + horizon_len - 1) + 1))
+    # Project a few weeks past the horizon too: the squad left at the end is valued on them.
+    window = list(range(ev.id, min(last_gw, horizon[-1] + TERMINAL_LOOKAHEAD) + 1))
     xp = project(world, window, signals=signals)
+    after = window[len(horizon) :]
+    terminal = (
+        {p: sum(xp[p].get(g, 0.0) for g in after) / len(after) for p in xp}
+        if after
+        else None
+    )
 
-    def plan_with(**kw) -> Plan:
+    kw = {
+        "multiplier": multiplier,
+        "max_hits": max_hits,
+        "unlimited": initial,
+        "ft_cap": ft_cap,
+        "keep_fts_on_chip": keep_fts_on_chip,
+        "terminal_xp": terminal,
+    }
+    if initial:  # a squad from scratch: pick it once and hold it (much faster to solve)
+        kw["no_transfer_last"] = len(horizon) - 1
+
+    def plan_with(**more) -> Plan:
         return solve(
             world,
             xp,
@@ -232,43 +269,43 @@ def decide(
             squad.sell_price,
             squad.bank,
             squad.free_transfers,
-            multiplier=multiplier,
-            max_hits=max_hits,
-            unlimited=initial,
-            **kw,
+            **{**kw, **more},
         )
 
     base = plan_with()
+    chip_kw = {k: v for k, v in kw.items() if k != "multiplier"}
     chips = (
         []
         if initial
-        else advise_chips(world, xp, window, horizon, squad, base, multiplier)
+        else advise_chips(
+            world, xp, window, horizon, squad, base, multiplier, **chip_kw
+        )
     )
     chip_now = next((c for c in chips if c.play_now), None)
-    plan = base
-    if chip_now:
-        if chip_now.plan is not None:
-            plan = chip_now.plan
-        elif chip_now.chip == "bboost":
-            plan = plan_with(bench_boost_gw=ev.id)
-        elif chip_now.chip == "3xc":
-            plan = plan_with(triple_captain_gw=ev.id)
-    return Decision(window, horizon, xp, base, plan, chips, chip_now)
+    plan = chip_now.plan if chip_now and chip_now.plan is not None else base
+    value = None
+    now_chip = plan.chip_now
+    if (
+        compare_hold
+        and not initial
+        and plan.buys
+        and now_chip not in (WILDCARD, FREE_HIT)
+    ):
+        same_chip = {
+            "triple_captain_gw": horizon[0] if now_chip == TRIPLE_CAPTAIN else None,
+            "bench_boost_gw": horizon[0] if now_chip == BENCH_BOOST else None,
+        }
+        hold = plan_with(max_transfers=0, **same_chip)
+        value = round(plan.objective - hold.objective, 1)
+    return Decision(window, horizon, xp, base, plan, chips, chip_now, value)
 
 
 # ------------------------------------------------------------------ explanations
 
 
 def _pair_transfers(a: Advice) -> list[tuple[int, int]]:
-    pairs = []
-    buys = list(a.plan.buys)
-    for out in sorted(a.plan.sells, key=lambda p: a.world.players[p].pos):
-        pos = a.world.players[out].pos
-        inn = next((b for b in buys if a.world.players[b].pos == pos), None)
-        if inn is not None:
-            buys.remove(inn)
-            pairs.append((out, inn))
-    return pairs
+    """(out, in) pairs as the plan made them: same position, dearest sale with dearest signing."""
+    return [(m.out, m.inn) for m in plan_moves(a)]
 
 
 def signals_live(a: Advice) -> bool:
@@ -345,14 +382,22 @@ def transfer_lines(a: Advice) -> list[str]:
     lines = []
     n = len(a.plan.buys)
     ft = a.squad.free_transfers
+    moves = plan_moves(a)
+    later = pencilled_weeks(a)
     if a.chip_now and a.chip_now.chip in ("wildcard", "freehit"):
         lines.append(
             f"Play your **{R.CHIP_NAMES[a.chip_now.chip]}**: {n} changes, all free."
         )
     elif n == 0:
+        nxt = later[0] if later else None
         lines.append(
-            f"**No transfers this week.** You have {ft} free transfer{'s' if ft != 1 else ''}. No move adds enough "
-            "expected points to beat keeping it for later (a saved transfer gives you flexibility when injuries hit)."
+            f"**No transfers this week.** You have {ft} free transfer{'s' if ft != 1 else ''}. "
+            f"Planning the next {len(a.horizon)} weeks together, no move now beats saving it"
+            + (
+                f": the plan uses it in GW{nxt.gw} instead (see below)."
+                if nxt is not None
+                else " for when injuries or fixture swings call for it."
+            )
             + (
                 " You're already at the maximum of 5, though, so one goes to waste if you don't use it."
                 if ft >= R.MAX_FREE_TRANSFERS
@@ -361,34 +406,74 @@ def transfer_lines(a: Advice) -> list[str]:
         )
     else:
         hit = f", taking a -{R.HIT_COST * a.plan.hits} hit" if a.plan.hits else ""
-        lines.append(
-            f"**Make {n} transfer{'s' if n > 1 else ''}** (you have {ft} free{hit})."
+        worth = (
+            f" Doing them now rather than waiting is worth {a.value_of_moves:+.1f} points in the "
+            "plan (after any hit, and counting the free transfer they use)."
+            if a.value_of_moves is not None
+            else ""
         )
-    for out, inn in _pair_transfers(a):
-        po, pi = a.world.players[out], a.world.players[inn]
-        gain = a.horizon_xp(inn) - a.horizon_xp(out)
         lines.append(
-            f"- OUT **{po.name}** (£{a.squad.sell_price[out]:.1f}m), IN **{pi.name}** (£{pi.price:.1f}m) — "
-            f"{gain:+.1f} expected points over {len(a.horizon)} weeks.\n"
-            f"  - Why sell: {_why_out(a, out)}.\n"
-            f"  - Why {pi.name}: {a.horizon_xp(inn):.1f} expected points, fixtures {a.fixtures(inn)}"
+            f"**Make {n} transfer{'s' if n > 1 else ''}** (you have {ft} free{hit}).{worth}"
+        )
+    for m in moves:
+        po, pi = a.world.players[m.out], a.world.players[m.inn]
+        lines.append(
+            f"- OUT **{po.name}** (£{m.sell_price:.1f}m), IN **{pi.name}** (£{pi.price:.1f}m) — "
+            f"{m.gain:+.1f} expected points as the plan counts them ({_money(m.money)}).\n"
+            f"  - Why sell: {_why_out(a, m.out)}.\n"
+            f"  - Why {pi.name}: {a.horizon_xp(m.inn):.1f} expected points over {len(a.horizon)} "
+            f"weeks, fixtures {a.fixtures(m.inn)}"
             + (
-                f", owned by {a.league.ownership.get(inn, 0):.0%} of your rivals"
+                f", owned by {a.league.ownership.get(m.inn, 0):.0%} of your rivals"
                 if a.league
                 else ""
             )
-            + "".join(f"; {e}" for e in evidence(a, inn))
+            + "".join(f"; {e}" for e in evidence(a, m.inn))
             + "."
         )
     if a.plan.hits:
         lines.append(
-            f"About the hit: each extra transfer costs {R.HIT_COST} points. A hit is only worth it when the "
-            "transfers together gain more than that over the weeks you keep the new players. Here the whole "
-            f"set gains {sum(a.horizon_xp(i) - a.horizon_xp(o) for o, i in _pair_transfers(a)):+.1f} expected "
-            f"points over {len(a.horizon)} weeks, for a cost of {R.HIT_COST * a.plan.hits}."
+            f"About the hit: each extra transfer costs {R.HIT_COST} points, and a move can usually wait "
+            "for next week's free transfer. The plan takes the hit only because these moves gain "
+            f"{sum(m.gain for m in moves):+.1f} points (weighted, over the weeks it keeps the new players) "
+            "and waiting would lose more than the hit costs."
         )
     lines.append(f"Money in the bank afterwards: £{a.plan.bank_after:.1f}m.")
+    if later:
+        lines.append(
+            "Pencilled in for later (the plan is made again each week, so these may change):"
+        )
+        for wk in later:
+            lines.append(f"- {_week_text(a, wk)}")
     return lines
+
+
+def _money(delta: float) -> str:
+    if abs(delta) < 0.05:
+        return "no money change"
+    return f"frees £{delta:.1f}m" if delta > 0 else f"costs £{-delta:.1f}m"
+
+
+def plan_moves(a: Advice) -> list:
+    """This week's moves, paired the way the plan made them."""
+    return list(getattr(a.plan, "moves", None) or [])
+
+
+def pencilled_weeks(a: Advice) -> list:
+    """Later weeks of the plan with a move or a chip in them."""
+    weeks = getattr(a.plan, "weeks", None) or []
+    return [w for w in weeks[1:] if w.moves or w.chip]
+
+
+def _week_text(a: Advice, wk) -> str:
+    parts = []
+    if wk.chip:
+        parts.append(f"play {R.CHIP_NAMES[wk.chip]}")
+    for m in wk.moves:
+        parts.append(f"{a.name(m.out)} → {a.name(m.inn)} ({m.gain:+.1f})")
+    hit = f", -{R.HIT_COST * wk.hits} hit" if wk.hits else ""
+    ft = f" ({wk.free_transfers} free transfer{'s' if wk.free_transfers != 1 else ''}{hit})"
+    return f"GW{wk.gw}{ft if wk.moves else ''}: " + "; ".join(parts) + "."
 
 
 def captain_lines(a: Advice) -> list[str]:

@@ -106,12 +106,26 @@ def risk_lambda(
 
 
 def ownership_multiplier(
-    player_ids, ownership: dict[int, float], lam: float
+    player_ids, ownership: dict[int, float], lam: float, centre: float = 0.5
 ) -> dict[int, float]:
-    """Weight on each player's expected points: 1 + lambda * (1 - 2 * rival ownership)."""
-    if not lam:
+    """Weight on each player's expected points: 1 + 2 * lambda * (centre - rival ownership).
+
+    It tilts the plan toward players rivals don't own (lambda > 0) or do own (lambda < 0). It is
+    meant to change which players the plan prefers, not how many points the plan expects overall:
+    pass `centre` = the average rival ownership of your own squad, so your current players weigh 1
+    on average and a hit (-4) or a saved transfer is still judged against real expected points.
+    With no rival data there is nothing to tilt toward, so no multiplier at all.
+    """
+    if not lam or not ownership:
         return {}
-    return {pid: 1 + lam * (1 - 2 * ownership.get(pid, 0.0)) for pid in player_ids}
+    return {pid: 1 + 2 * lam * (centre - ownership.get(pid, 0.0)) for pid in player_ids}
+
+
+def ownership_centre(squad: list[int], ownership: dict[int, float]) -> float:
+    """Average rival ownership of a squad: the point where the multiplier is 1."""
+    if not squad:
+        return 0.5
+    return sum(ownership.get(p, 0.0) for p in squad) / len(squad)
 
 
 def _select_rivals(results: list[dict], my_entry: int) -> list[dict]:

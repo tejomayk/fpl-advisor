@@ -40,9 +40,18 @@ def check_valid(plan, world, sell, bank, squad):
         assert sum(pl[p].team == t for p in plan.squad) <= R.MAX_PER_CLUB
     cost = sum(sell[p] if p in squad else pl[p].price for p in plan.squad)
     assert cost <= bank + sum(sell[p] for p in squad) + 1e-6
+    # Later weeks may carry pencilled-in moves: each week's XI comes from that week's squad,
+    # and every week's squad is valid on its own.
+    assert set(plan.squads[GWS[0]]) == set(plan.squad)
     for g in GWS:
+        week = plan.squads[g]
+        assert len(set(week)) == 15
+        for pos, n in R.SQUAD_COUNT.items():
+            assert sum(pl[p].pos == pos for p in week) == n
+        for t in world.teams:
+            assert sum(pl[p].team == t for p in week) <= R.MAX_PER_CLUB
         xi = plan.xi[g]
-        assert len(xi) == 11 and set(xi) <= set(plan.squad)
+        assert len(xi) == 11 and set(xi) <= set(week)
         for pos in R.POS_NAME:
             n = sum(pl[p].pos == pos for p in xi)
             assert R.XI_MIN[pos] <= n <= R.XI_MAX[pos]
@@ -123,9 +132,12 @@ def test_max_transfers(setup):
 
 def test_triple_captain_and_bench_boost_change_points(setup):
     world, squad, sell, xp = setup
-    base = solve(world, xp, GWS, squad, sell, 2.0, 1, max_hits=0)
-    tc = solve(world, xp, GWS, squad, sell, 2.0, 1, max_hits=0, triple_captain_gw=5)
-    bb = solve(world, xp, GWS, squad, sell, 2.0, 1, max_hits=0, bench_boost_gw=5)
+    # Moves this week only, so the chip can't change the squad through a later free transfer
+    # (the multi-period plan may otherwise pencil one in to strengthen a Bench Boost bench).
+    once = {"max_hits": 0, "no_transfer_last": len(GWS) - 1}
+    base = solve(world, xp, GWS, squad, sell, 2.0, 1, **once)
+    tc = solve(world, xp, GWS, squad, sell, 2.0, 1, triple_captain_gw=5, **once)
+    bb = solve(world, xp, GWS, squad, sell, 2.0, 1, bench_boost_gw=5, **once)
     cap_xp = xp[base.captain[5]][5]
     assert cap_xp > 0
     assert tc.gw_points[5] == pytest.approx(base.gw_points[5] + cap_xp, rel=1e-6)
