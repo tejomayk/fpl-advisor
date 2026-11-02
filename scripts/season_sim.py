@@ -156,7 +156,7 @@ def simulate(
                 multiplier=mult,
                 ft_cap=rules.max_free_transfers,
                 keep_fts_on_chip=rules.keep_fts_on_chip,
-                compare_hold=False,
+                compare_hold=True,
             )
             plan, chip = dec.plan, None
             adv = Manager(
@@ -180,7 +180,7 @@ def simulate(
                 multiplier=mult,
                 ft_cap=rules.max_free_transfers,
                 keep_fts_on_chip=rules.keep_fts_on_chip,
-                compare_hold=False,
+                compare_hold=True,
             )
             plan = dec.plan
             chip = dec.chip_now.chip if dec.chip_now else None
@@ -224,6 +224,11 @@ def simulate(
                 if sc.multiplier_on
                 else None,
                 "autosubs": len(sc.subs),
+                # Robustness (advise.decide): P(the moves beat holding), P(the hit beats the
+                # best plan without one), and whether the rule changed the planner's choice.
+                "p_beats_hold": dec.p_beats_hold,
+                "p_hit": dec.p_hit,
+                "robust_changed": dec.robust_note is not None,
                 "in": [data.world.players[p].name for p in plan.buys]
                 if g > gws[0]
                 else [],
@@ -309,18 +314,34 @@ def add_jitter(rel: float, seed: int) -> None:
 
     from fpl_advisor import advise
 
-    project = advise.project
+    project_dist = advise.project_dist
 
     def noisy(world, gws, **kw):
-        xp = project(world, gws, **kw)
+        dists = project_dist(world, gws, **kw)
         base = world.next_event.id if world.next_event else 0
-        for pid, by_gw in xp.items():
-            for g in by_gw:
+        for pid, by_gw in dists.items():
+            for g, d in by_gw.items():
                 rng = random.Random(f"{seed}:{base}:{pid}:{g}")
-                by_gw[g] *= max(0.0, 1 + rng.gauss(0, rel))
-        return xp
+                by_gw[g] = replace(d, mean=d.mean * max(0.0, 1 + rng.gauss(0, rel)))
+        return dists
 
-    advise.project = noisy
+    advise.project_dist = noisy
+
+
+def apply_settings(settings: list[str]) -> None:
+    """--set module.NAME=value (value as JSON), e.g. --set robust.MOVE_CONFIDENCE=0.6."""
+    import importlib
+
+    for s in settings:
+        key, _, raw = s.partition("=")
+        mod_name, _, name = key.rpartition(".")
+        mod = importlib.import_module(f"fpl_advisor.{mod_name}")
+        if not hasattr(mod, name):
+            raise SystemExit(f"--set: fpl_advisor.{mod_name} has no {name}")
+        val = json.loads(raw)
+        if isinstance(getattr(mod, name), tuple):
+            val = tuple(val)
+        setattr(mod, name, val)
 
 
 # ------------------------------------------------------------------ main
@@ -344,7 +365,15 @@ def main():
         help="relative noise on every projection (e.g. 0.01), to see how noisy a total is",
     )
     ap.add_argument("--seed", type=int, default=0, help="seed for --jitter")
+    ap.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="MODULE.NAME=JSON",
+        help="override a constant for this run, e.g. robust.MOVE_CONFIDENCE=0.6",
+    )
     args = ap.parse_args()
+    apply_settings(args.set)
     optimise.SOLVER_TIME_LIMIT = args.time_limit
     if args.jitter:
         add_jitter(args.jitter, args.seed)
