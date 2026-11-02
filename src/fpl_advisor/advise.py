@@ -128,46 +128,25 @@ def build_advice(
     else:
         lam, why = risk_lambda(0, [], 0, cfg.risk)
 
-    # Project far enough to compare each chip with every week left before it expires.
-    last_gw = max(e.id for e in world.events)
-    deadlines = [
-        chip_deadline(world.chips, c, ev.id) or last_gw for c in squad.chips_available
-    ]
-    window_end = min(last_gw, max([ev.id + horizon_len - 1, *deadlines]))
-    window = list(range(ev.id, window_end + 1))
-    horizon = window[:horizon_len]
-    xp = project(world, window, signals=signals)
-    own = league.ownership if league else {}
-    mult = ownership_multiplier(world.players, own, lam) or None
-
-    def plan_with(**kw) -> Plan:
-        return solve(
-            world,
-            xp,
-            horizon,
-            squad.players,
-            squad.sell_price,
-            squad.bank,
-            squad.free_transfers,
-            multiplier=mult,
-            max_hits=cfg.max_hits,
-            unlimited=initial,
-            **kw,
+    dec = decide(
+        world,
+        squad,
+        initial=initial,
+        max_hits=cfg.max_hits,
+        multiplier=ownership_multiplier(
+            world.players, league.ownership if league else {}, lam
         )
-
-    base = plan_with()
-    chips = (
-        [] if initial else advise_chips(world, xp, window, horizon, squad, base, mult)
+        or None,
+        horizon_len=horizon_len,
+        signals=signals,
     )
-    chip_now = next((c for c in chips if c.play_now), None)
-    plan = base
-    if chip_now:
-        if chip_now.plan is not None:
-            plan = chip_now.plan
-        elif chip_now.chip == "bboost":
-            plan = plan_with(bench_boost_gw=ev.id)
-        elif chip_now.chip == "3xc":
-            plan = plan_with(triple_captain_gw=ev.id)
+    horizon, xp, plan, chips, chip_now = (
+        dec.horizon,
+        dec.xp,
+        dec.plan,
+        dec.chips,
+        dec.chip_now,
+    )
 
     hours = (ev.deadline - now).total_seconds() / 3600
     timing = timing_advice(
@@ -203,6 +182,78 @@ def build_advice(
     if league_note:
         advice.notes.append(league_note)
     return advice
+
+
+@dataclass
+class Decision:
+    """What the advisor decides for the next deadline, before any explanation is written."""
+
+    window: list[int]  # gameweeks projected (to the last chip deadline)
+    horizon: list[int]  # gameweeks the transfer plan looks ahead
+    xp: dict[int, dict[int, float]]
+    base: Plan  # the plan without a chip
+    plan: Plan  # the plan to follow (with the chip, if one is played now)
+    chips: list[ChipAdvice]
+    chip_now: ChipAdvice | None
+
+
+def decide(
+    world: World,
+    squad: Squad,
+    *,
+    initial: bool,
+    max_hits: int,
+    multiplier: dict[int, float] | None = None,
+    horizon_len: int = 5,
+    signals: Signals | None = None,
+) -> Decision:
+    """Projections, transfers, chips, XI and captain for `world.next_event`.
+
+    This is the whole decision path `build_advice` uses; scripts/season_sim.py replays past
+    seasons through it, so a change here is measured on season totals.
+    """
+    ev = world.next_event
+    # Project far enough to compare each chip with every week left before it expires.
+    last_gw = max(e.id for e in world.events)
+    deadlines = [
+        chip_deadline(world.chips, c, ev.id) or last_gw for c in squad.chips_available
+    ]
+    window_end = min(last_gw, max([ev.id + horizon_len - 1, *deadlines]))
+    window = list(range(ev.id, window_end + 1))
+    horizon = window[:horizon_len]
+    xp = project(world, window, signals=signals)
+
+    def plan_with(**kw) -> Plan:
+        return solve(
+            world,
+            xp,
+            horizon,
+            squad.players,
+            squad.sell_price,
+            squad.bank,
+            squad.free_transfers,
+            multiplier=multiplier,
+            max_hits=max_hits,
+            unlimited=initial,
+            **kw,
+        )
+
+    base = plan_with()
+    chips = (
+        []
+        if initial
+        else advise_chips(world, xp, window, horizon, squad, base, multiplier)
+    )
+    chip_now = next((c for c in chips if c.play_now), None)
+    plan = base
+    if chip_now:
+        if chip_now.plan is not None:
+            plan = chip_now.plan
+        elif chip_now.chip == "bboost":
+            plan = plan_with(bench_boost_gw=ev.id)
+        elif chip_now.chip == "3xc":
+            plan = plan_with(triple_captain_gw=ev.id)
+    return Decision(window, horizon, xp, base, plan, chips, chip_now)
 
 
 # ------------------------------------------------------------------ explanations

@@ -17,6 +17,8 @@ HORIZON_WEIGHTS = [1.0, 0.85, 0.72, 0.61, 0.52]
 BENCH_WEIGHT = 0.08  # a little value for bench cover (injuries, rotation)
 ROLL_VALUE = 1.0  # points of value per extra free transfer carried forward
 CANDIDATES_PER_POS = {R.GKP: 12, R.DEF: 35, R.MID: 40, R.FWD: 25}
+# Seconds CBC may spend per solve. scripts/season_sim.py lowers it to replay seasons faster.
+SOLVER_TIME_LIMIT = 60
 
 
 @dataclass
@@ -160,7 +162,7 @@ def solve(
         pulp.lpSum(obj) - R.HIT_COST * hits + (0 if unlimited else ROLL_VALUE * roll)
     )
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=60))
+    status = prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=SOLVER_TIME_LIMIT))
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(f"Optimiser failed: {pulp.LpStatus[status]}")
 
