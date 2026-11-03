@@ -12,6 +12,7 @@ import { League } from "./views/League";
 import { hasScouting, Scouting } from "./views/Scouting";
 import { Team } from "./views/Team";
 import { ThisWeek } from "./views/ThisWeek";
+import { useWhatIf } from "./views/WhatIf";
 
 const loadMotion = () => import("./lib/motionFeatures").then((r) => r.default);
 
@@ -246,14 +247,21 @@ function Results({
   initialView,
   onView,
   openChange,
+  team,
+  league,
+  linkDraft,
 }: {
   d: Advice;
   demo: boolean;
   initialView: View;
   onView: (v: View) => void;
   openChange: () => void;
+  team?: number;
+  league?: number | null;
+  linkDraft: string | null;
 }) {
   const show = useSheet();
+  const wi = useWhatIf(d, demo ? undefined : team, league, linkDraft);
   const views = useMemo(() => viewsFor(d), [d]);
   const [view, setViewRaw] = useState<View>(views.some((v) => v.id === initialView) ? initialView : "week");
   const dir = useRef(0);
@@ -301,7 +309,7 @@ function Results({
             exit="exit"
             transition={{ type: "spring", stiffness: 380, damping: 36, opacity: { duration: 0.18 } }}
           >
-            {view === "week" && <ThisWeek d={d} demo={demo} />}
+            {view === "week" && <ThisWeek d={d} demo={demo} wi={wi} />}
             {view === "team" && <Team d={d} />}
             {view === "league" && <League d={d} />}
             {view === "scout" && <Scouting d={d} />}
@@ -324,12 +332,14 @@ function AppInner() {
   const show = useSheet();
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const qView = params.get("view") as View | null;
+  // A shared what-if draft (lib/drafts.ts), only for the team in the same link.
+  const linkDraft = useMemo(() => params.get("draft"), [params]);
   const [view, setView] = useState<View>(qView && VIEW_IDS.includes(qView) ? qView : "week");
   const [initial, setInitial] = useState({ team: saved.get("team"), league: saved.get("league"), errors: {} as { team?: string; league?: string } });
 
   const go = useCallback(
     (team: number, league: number | null) => {
-      writeUrl({ team, league, view: "week" });
+      writeUrl({ team, league, view: "week", draft: null });
       setView("week");
       load(team, league);
     },
@@ -420,6 +430,9 @@ function AppInner() {
         writeUrl({ team: status.team, league: status.league, demo: status.demo, view: v });
       }}
       openChange={openChange}
+      team={status.team}
+      league={status.league}
+      linkDraft={status.team && String(status.team) === params.get("team") ? linkDraft : null}
     />
   );
 }

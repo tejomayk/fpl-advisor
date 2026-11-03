@@ -233,4 +233,51 @@ export interface Advice {
   creators?: Creators | null;
   sources?: Record<string, string>;
   notes?: string[];
+  /** "FPL only shows your squad after each deadline…": shown at the top of the advice. */
+  pending_note?: string | null;
+  /** The squad as FPL last showed it, with selling prices (the transfer editor starts here). */
+  squad?: Player[];
+}
+
+/** One row of GET /api/players: every player, for the transfer editor's search. */
+export interface ListedPlayer {
+  id: number;
+  name: string;
+  team?: string;
+  pos?: string;
+  price?: number;
+  status?: string;
+  chance?: number | null;
+  news?: string;
+  selected_by?: number;
+}
+
+/** One way to play the coming weeks, in GET /api/whatif. */
+export interface WhatIfOption {
+  /** Expected points over the horizon, after every hit. */
+  points?: number;
+  hits?: number;
+  transfers?: { out: number; in: number }[];
+}
+
+/** The shape of GET /api/whatif (see src/fpl_advisor/serialize.py: whatif_to_dict). */
+export interface WhatIf {
+  team?: { id?: number };
+  gameweek?: { id?: number; deadline?: string };
+  horizon?: number[];
+  moves?: { out?: Player; in?: Player; money?: number }[];
+  free_transfers?: number;
+  hits?: number;
+  hit_cost?: number;
+  bank_before?: number;
+  bank_after?: number;
+  free_transfers_left?: number;
+  compare?: { yours?: WhatIfOption; hold?: WhatIfOption; advisor?: WhatIfOption };
+  p_beats_hold?: number | null;
+  confidence?: string | null;
+  win_chance?: { yours?: number; hold?: number; advisor?: number } | null;
+  summary?: string;
+  lineup?: Sheet | null;
+  captain?: Player | null;
+  next?: PlanWeek[];
 }

@@ -102,19 +102,8 @@ def choose(
     ranked = sorted(plan.xi[g0], key=lambda p: -xp.get(p, {}).get(g0, 0.0))
     for pid in [p for p in ranked if p != plan.captain[g0]][:CAPTAIN_OPTIONS]:
         cands[f"captain:{pid}"] = _with_captain(plan, g0, pid, xp)
-    picks = {n: plan_picks(p, gws) for n, p in cands.items()}
-    entrants = W.entrants_from_league(view, world, dists, gws, picks["plan"])
+    res, entrants = score_plans(view, world, dists, gws, cands, n_sims, seed)
     me = view.me.entry
-    res = W.choose_plan(
-        entrants,
-        me,
-        picks,
-        dists,
-        world,
-        max(remaining, len(gws)),
-        n_sims,
-        g0 if seed is None else seed,
-    )
     best, gain, se = pick(res)
     chosen = cands[best]
     out = LeagueChoice(
@@ -146,6 +135,34 @@ def choose(
             "(the plan with the most expected points is slightly ahead on points alone)."
         )
     return out
+
+
+def score_plans(
+    view,
+    world,
+    dists,
+    gws: list[int],
+    plans: dict[str, Plan],
+    n_sims: int = SIMS,
+    seed: int | None = None,
+) -> tuple[W.PlanChoice, list[W.Entrant]]:
+    """P(finish 1st) for each of `plans` on the same simulated seasons. The first plan is the
+    baseline: rivals are modelled against it. `gws` are the weeks simulated player by player."""
+    picks = {n: plan_picks(p, gws) for n, p in plans.items()}
+    entrants = W.entrants_from_league(
+        view, world, dists, gws, next(iter(picks.values()))
+    )
+    res = W.choose_plan(
+        entrants,
+        view.me.entry,
+        picks,
+        dists,
+        world,
+        max(view.remaining_gws, len(gws)),
+        n_sims,
+        gws[0] if seed is None else seed,
+    )
+    return res, entrants
 
 
 def pick(res: W.PlanChoice, baseline: str = "plan") -> tuple[str, float, float]:

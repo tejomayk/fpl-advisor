@@ -28,6 +28,7 @@ import {
   timingSheet,
   transferSheet,
 } from "../sheets/sheets";
+import { PendingNote, WhatIfPanel, type WhatIfState } from "./WhatIf";
 
 function Hero({ d, demo }: { d: Advice; demo: boolean }) {
   const L = d.lineup;
@@ -556,9 +557,14 @@ function PlayNow({ d }: { d: Advice }) {
   );
 }
 
-export function ThisWeek({ d, demo = false }: { d: Advice; demo?: boolean }) {
+export function ThisWeek({ d, demo = false, wi }: { d: Advice; demo?: boolean; wi?: WhatIfState }) {
   return (
     <div className="mx-auto w-full max-w-[640px] px-5 pb-8 md:px-0 desk:max-w-[1120px] desk:px-8">
+      {wi && (
+        <div className="desk:max-w-[640px]">
+          <PendingNote d={d} wi={wi} />
+        </div>
+      )}
       <div className="desk:grid desk:grid-cols-[minmax(0,1fr)_380px] desk:items-end desk:gap-x-24">
         <Hero d={d} demo={demo} />
         <div>
@@ -566,6 +572,11 @@ export function ThisWeek({ d, demo = false }: { d: Advice; demo?: boolean }) {
           <BestMove d={d} />
         </div>
       </div>
+      {wi && (
+        <div className="desk:max-w-[640px]">
+          <WhatIfPanel d={d} wi={wi} />
+        </div>
+      )}
       <div className="mt-16 md:mt-24 desk:grid desk:grid-cols-[minmax(0,1fr)_380px] desk:gap-x-24">
         <Transfers d={d} />
         <div className="mt-16 space-y-16 md:mt-20 md:space-y-20 desk:mt-0">

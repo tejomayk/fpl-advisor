@@ -6,6 +6,7 @@ import copy
 
 from . import rules as R
 from .advise import (
+    PENDING_NOTE,
     Advice,
     _why_out,
     captain_lines,
@@ -21,6 +22,7 @@ from .advise import (
 from .prices import outlook
 from .robust import level
 from .squad import chips_available
+from .whatif import Option, WhatIf
 
 
 def _player(a: Advice, pid: int) -> dict:
@@ -377,5 +379,116 @@ def advice_to_dict(a: Advice) -> dict:
         "elite": _elite(a),
         "creators": _creators(a),
         "sources": dict(a.signals.updated),
-        "notes": list(a.notes),
+        "notes": [n for n in a.notes if n != PENDING_NOTE],
+        # Shown at the top of the advice, with a button to enter those transfers (whatif.py).
+        "pending_note": PENDING_NOTE if PENDING_NOTE in a.notes else None,
+        # The squad as FPL last showed it, with selling prices: the transfer editor starts here.
+        "squad": []
+        if a.initial
+        else [{**_player(a, p), "sell_price": s.sell_price.get(p)} for p in s.players],
+    }
+
+
+def _horizon_text(h: list[int]) -> str:
+    return f"GW{h[0]}" if len(h) == 1 else f"GW{h[0]}-{h[-1]}"
+
+
+def _diff_text(d: float, what: str) -> str:
+    if abs(d) < 0.05:
+        return f"the same as {what}"
+    return f"{abs(d):.1f} {'more' if d > 0 else 'fewer'} than {what}"
+
+
+def whatif_summary(w: WhatIf) -> str:
+    """The result in one or two plain sentences."""
+    h = _horizon_text(w.advice.horizon)
+    if w.empty:
+        return (
+            f"Making no transfers scores {w.hold.points:.1f} expected points over {h}; the "
+            f"advisor's plan scores {w.advisor.points:.1f}."
+        )
+    hit = f" after the -{R.HIT_COST * w.hits} hit" if w.hits else ""
+    out = (
+        f"Your transfers score {w.yours.points:.1f} expected points over {h}{hit}: "
+        f"{_diff_text(w.yours.points - w.hold.points, 'making no transfers')} and "
+        f"{_diff_text(w.yours.points - w.advisor.points, "the advisor's plan")}."
+    )
+    p = w.p_beats_hold
+    if p is not None:
+        out += (
+            " With every player's forecast nudged up and down by how unsure it is, they beat "
+            f"making no transfers in {p:.0%} of the tests"
+        )
+        out += (
+            f" ({level(p)})."
+            if p >= 0.5
+            else f", so making no transfers is the safer choice ({level(1 - p)})."
+        )
+    return out
+
+
+def _whatif_confidence(p: float | None) -> str | None:
+    """How sure the comparison with holding is, whichever way it goes."""
+    return None if p is None else level(max(p, 1 - p))
+
+
+def whatif_to_dict(w: WhatIf) -> dict:
+    """A what-if result for the web page: your version, holding and the advisor's plan."""
+    a = w.advice
+    g = a.event.id
+    plan = w.yours.plan
+    sq = a.squad
+
+    def option(o: Option, own_moves: bool) -> dict:
+        moves = [] if own_moves else o.plan.moves
+        return {
+            "points": o.points,
+            # Every hit in the plan, this week's (yours) and later ones.
+            "hits": o.hits + sum(wk.hits for wk in o.plan.weeks),
+            "transfers": [{"out": m.out, "in": m.inn} for m in moves],
+        }
+
+    moves = []
+    for out, inn in w.moves:
+        sp = sq.sell_price[out]
+        moves.append(
+            {
+                "out": {**_player(a, out), "sell_price": sp},
+                "in": _player(a, inn),
+                "money": round(sp - a.world.players[inn].price, 1),
+            }
+        )
+    return {
+        "team": {"id": sq.team_id},
+        "gameweek": {"id": g, "deadline": a.event.deadline.isoformat()},
+        "horizon": a.horizon,
+        "moves": moves,
+        "free_transfers": sq.free_transfers,
+        "hits": w.hits,
+        "hit_cost": R.HIT_COST * w.hits,
+        "bank_before": sq.bank,
+        "bank_after": w.squad.bank,
+        "free_transfers_left": w.squad.free_transfers,
+        "compare": {
+            "yours": option(w.yours, own_moves=not w.empty),
+            "hold": option(w.hold, own_moves=True),
+            "advisor": option(w.advisor, own_moves=False),
+        },
+        # P(your version beats making no transfers), with every forecast nudged (robust.py).
+        "p_beats_hold": w.p_beats_hold,
+        # How sure that comparison is, whichever way it goes ("strong" at 10% too: holding wins).
+        "confidence": _whatif_confidence(w.p_beats_hold),
+        # P(finish 1st in the league) for each version, when a league is set.
+        "win_chance": w.win,
+        "summary": whatif_summary(w),
+        "lineup": {
+            "xi": [_player(a, p) for p in plan.xi[g]],
+            "bench": [_player(a, p) for p in plan.bench[g]],
+            "captain_id": plan.captain[g],
+            "vice_id": plan.vice[g],
+            "expected_points": round(plan.gw_points[g], 1),
+        },
+        "captain": _player(a, plan.captain[g]),
+        # What the advisor would do next from your edited squad (no more moves this week).
+        "next": [_week(a, wk) for wk in plan.weeks[1:] if wk.moves or wk.chip],
     }
