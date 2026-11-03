@@ -7,5 +7,5 @@ echo "== secrets";       python3 scripts/check_secrets.py
 echo "== ruff";          uv run ruff check .
 echo "== ruff format";   uv run ruff format --check .
 echo "== pytest";        uv run pytest -q
-echo "== front end";     (cd frontend && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm run typecheck)
+echo "== front end";     (cd frontend && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm run typecheck && npm test)
 echo "All checks passed."

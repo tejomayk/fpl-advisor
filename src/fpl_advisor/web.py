@@ -33,15 +33,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import jobs, usage
+from . import rules as R
 from . import store as store_mod
-from .advise import build_advice
+from .advise import Advice, build_advice
 from .api import FPLClient, FPLError, prune_cache
 from .config import Config
 from .keys import load_dotenv, redact
 from .net import client_ip
-from .serialize import advice_to_dict
+from .serialize import advice_to_dict, whatif_to_dict
 from .signals import Signals
 from .signals_service import SignalsHub
+from .whatif import build_whatif, parse_moves
 from .world import World, load_world
 
 log = logging.getLogger("fpl_advisor.web")
@@ -50,6 +52,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"  # shipped inside the pa
 WORLD_REFRESH_SECONDS = 30 * 60
 RETRY_AFTER_FAILURE_SECONDS = 60
 ADVICE_TTL_SECONDS = 10 * 60
+ADVICE_OBJECTS_KEPT = 8
 RATE_LIMIT = (20, 60)  # requests per IP per window (seconds) for /api/advice
 CACHE_PRUNE_SECONDS = 3600
 SIGNALS_REFRESH_SECONDS = 30 * 60
@@ -339,6 +342,9 @@ def create_app(
     if alerts is None:
         alerts = os.environ.get("FPL_ALERTS", "").strip() == "1"
     advice_cache = AdviceCache()
+    # The Advice objects behind recent answers, so a what-if after the advice skips rebuilding it.
+    # Each holds forecasts for every player, so only a few are kept.
+    advice_objects = AdviceCache(max_items=ADVICE_OBJECTS_KEPT)
     limiter = RateLimiter(*RATE_LIMIT)
 
     @asynccontextmanager
@@ -372,6 +378,35 @@ def create_app(
             "mode": "serverless" if serverless else "server",
         }
 
+    def advice_key(team: int, league: int | None, risk: str) -> tuple[World, tuple]:
+        world = worlds.get()
+        gw = world.next_event.id if world.next_event else None
+        if gw is not None and hub.current().gameweek not in (None, gw):
+            # A deadline passed: odds/news are stale. Only wakes the scheduled loop;
+            # a visitor's request never makes a paid call itself.
+            hub.request_refresh()
+        return world, (gw, team, league, risk, hub.version)
+
+    def fresh_advice(
+        world: World, key: tuple, team, league, risk
+    ) -> tuple[Advice, dict]:
+        a = build_advice(
+            Config(team_id=team, league_id=league, risk=risk),
+            client,
+            world=world,
+            signals=hub.current(),
+        )
+        data = advice_to_dict(a)
+        advice_objects.put(key, a)
+        advice_cache.put(key, data)
+        return a, data
+
+    def check_rate(request: Request) -> None:
+        if not limiter.allow(client_ip(request)):
+            raise HTTPException(
+                429, "Too many requests. Please wait a minute and try again."
+            )
+
     @app.get("/api/advice")
     def advice(
         request: Request,
@@ -379,37 +414,75 @@ def create_app(
         league: int | None = Query(None, ge=1, le=99_999_999),
         risk: str = Query("auto", pattern="^(auto|low|medium|high)$"),
     ):
-        if not limiter.allow(client_ip(request)):
-            raise HTTPException(
-                429, "Too many requests. Please wait a minute and try again."
-            )
+        check_rate(request)
         try:
-            world = worlds.get()
-            gw = world.next_event.id if world.next_event else None
-            if gw is not None and hub.current().gameweek not in (None, gw):
-                # A deadline passed: odds/news are stale. Only wakes the scheduled loop;
-                # a visitor's request never makes a paid call itself.
-                hub.request_refresh()
-            key = (gw, team, league, risk, hub.version)
+            world, key = advice_key(team, league, risk)
             cached = advice_cache.get(key)
             if cached:
                 return cached
-            a = build_advice(
-                Config(team_id=team, league_id=league, risk=risk),
-                client,
-                world=world,
-                signals=hub.current(),
-            )
+            _, data = fresh_advice(world, key, team, league, risk)
         except FPLError as e:
-            msg = str(e)
-            raise HTTPException(
-                404 if "Not found" in msg else 503, _friendly(msg)
-            ) from e
+            raise _fpl_http_error(e) from e
         except ValueError as e:
             raise HTTPException(400, redact(str(e))) from e
-        data = advice_to_dict(a)
-        advice_cache.put(key, data)
         return data
+
+    @app.get("/api/whatif")
+    def whatif(
+        request: Request,
+        team: int = Query(..., ge=1, le=99_999_999),
+        league: int | None = Query(None, ge=1, le=99_999_999),
+        risk: str = Query("auto", pattern="^(auto|low|medium|high)$"),
+        moves: str = Query("", max_length=400),
+    ):
+        """Score the manager's own transfers for the next deadline (see whatif.py).
+
+        `moves` is "out-in,out-in" in FPL player IDs. The advice it builds on is reused when this
+        instance made it recently, so trying a draft after loading the advice is quick."""
+        check_rate(request)
+        try:
+            pairs = parse_moves(moves)
+            world, key = advice_key(team, league, risk)
+            wkey = (*key, tuple(pairs))
+            cached = advice_cache.get(("whatif", *wkey))
+            if cached:
+                return cached
+            a = advice_objects.get(key)
+            if a is None:
+                a, _ = fresh_advice(world, key, team, league, risk)
+            data = whatif_to_dict(build_whatif(a, pairs))
+        except FPLError as e:
+            raise _fpl_http_error(e) from e
+        except ValueError as e:  # DraftError is one: the reason is written for the user
+            raise HTTPException(400, redact(str(e))) from e
+        advice_cache.put(("whatif", *wkey), data)
+        return data
+
+    @app.get("/api/players")
+    def players():
+        """Every player with price, club and position, for the transfer editor's search."""
+        try:
+            world = worlds.get()
+        except FPLError as e:
+            raise _fpl_http_error(e) from e
+        ev = world.next_event
+        return {
+            "gameweek": ev.id if ev else None,
+            "players": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "team": world.teams[p.team].short,
+                    "pos": R.POS_NAME[p.pos],
+                    "price": p.price,
+                    "status": p.status,
+                    "chance": p.chance_next,
+                    "news": p.news,
+                    "selected_by": p.selected_by,
+                }
+                for p in world.players.values()
+            ],
+        }
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException):
@@ -428,7 +501,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, _exc: RequestValidationError):
-        if request.url.path.startswith("/api/advice"):
+        if request.url.path.startswith(("/api/advice", "/api/whatif")):
             msg = "That doesn't look like a valid FPL ID. Use the number from your FPL link."
         else:
             msg = "That request wasn't in the expected format."
@@ -445,6 +518,11 @@ def create_app(
             return FileResponse(STATIC_DIR / "index.html")
 
     return app
+
+
+def _fpl_http_error(e: FPLError) -> HTTPException:
+    msg = str(e)
+    return HTTPException(404 if "Not found" in msg else 503, _friendly(msg))
 
 
 def _friendly(msg: str) -> str:

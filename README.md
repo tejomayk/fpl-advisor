@@ -14,6 +14,8 @@ The public URL will be added at launch. Until then, you can [run your own copy](
 
 The team sheet has two views. **Your team now** is the XI, bench and captain you last saved in FPL, with its expected points: what scores if you change nothing. **After our moves** is the team with the suggested transfers, captain and chips. You decide which to play.
 
+**Try your own transfers.** Enter transfers you've already made, or ideas you want to test, and the site scores them over the coming weeks next to making no transfers and next to the advisor's plan: expected points after any hit, how sure that is, your chance of winning your league (if you gave one), your best XI and captain, and what the advisor would do next from that squad. **Save** keeps the draft in your browser until the deadline; **Copy link** gives you a link (player IDs only) that opens the same draft on another device. Nothing is stored on our server.
+
 No login and no password. It reads FPL's public data only.
 
 If you do not have IDs to hand, use `/?demo=1` on the site to see an example team.
@@ -84,7 +86,7 @@ The elite-manager signal was tested the same way, using their picks from the gam
 
 ## Limitations
 
-- It uses the public API only. Transfers you have already made for the upcoming gameweek are not visible until the deadline passes.
+- It uses the public API only. Transfers you have already made for the upcoming gameweek are not visible until the deadline passes. On the site, use **Enter transfers you've already made** at the top of the advice to add them.
 - Transfers are planned one gameweek at a time. It does not give you a full multi-week transfer plan.
 - Classic leagues only. Head-to-head leagues are not supported.
 - It cannot make transfers for you.

@@ -21,6 +21,7 @@ import {
   signed,
 } from "../lib/format";
 import type { Advice, Chip, Move, Player } from "../lib/types";
+import { pendingNote } from "../views/WhatIf";
 
 const POS_NAME: Record<string, string> = { GKP: "Goalkeeper", DEF: "Defender", MID: "Midfielder", FWD: "Forward" };
 
@@ -397,7 +398,9 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export function aboutSheet(d: Advice | null): SheetSpec {
-  const notes = (d?.notes || []).filter(Boolean);
+  // The note about transfers FPL can't show yet sits at the top of the advice (views/WhatIf.tsx).
+  const pending = d ? pendingNote(d) : null;
+  const notes = (d?.notes || []).filter((n) => n && n !== pending);
   const s = d?.sources || {};
   const srcs = Object.keys(SOURCE_LABEL)
     .map((k) => [SOURCE_LABEL[k], Date.parse(s[k])] as const)

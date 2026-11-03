@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
@@ -46,6 +47,12 @@ from .world import Event, World, load_world
 
 # Weeks after the horizon used to value the squad left at the end.
 TERMINAL_LOOKAHEAD = 4
+# FPL's public data hides transfers made since the last deadline. The site shows this at the top
+# of the advice, with a way to enter them (whatif.py).
+PENDING_NOTE = (
+    "FPL only shows your squad after each deadline, so transfers you've already made for this "
+    "gameweek aren't counted here."
+)
 
 
 @dataclass
@@ -76,6 +83,8 @@ class Advice:
     robust_note: str | None = None  # why the planner's first choice was changed
     # Stage 4 (leaguechoice.py): the choice made on P(finish 1st), when a league is set.
     league_choice: LeagueChoice | None = None
+    # The decision behind the advice: what-if transfers (whatif.py) reuse its forecasts and plans.
+    decision: Decision | None = None
 
     # ---- helpers
     def name(self, pid: int) -> str:
@@ -215,10 +224,7 @@ def build_advice(
         timing,
         chip_now,
     )
-    advice.notes.append(
-        "FPL only shows your squad after each deadline, so transfers you've already made for this "
-        "gameweek aren't counted here."
-    )
+    advice.notes.append(PENDING_NOTE)
     advice.initial = initial
     advice.signals = signals
     advice.value_of_moves = dec.value_of_moves
@@ -227,6 +233,7 @@ def build_advice(
     advice.move_confidence = dec.move_confidence
     advice.robust_note = dec.robust_note
     advice.league_choice = choice
+    advice.decision = dec
     if (
         initial
     ):  # there's no existing squad, so the note about unseen transfers doesn't apply
@@ -266,6 +273,9 @@ class Decision:
     robust_note: str | None = None
     p_hit: float | None = None  # P(the plan with a hit beats the best plan without one)
     multiplier: dict[int, float] | None = None
+    # Solve the same plan for another squad: solve(players, sell_price, bank, free_transfers,
+    # **solver options). What-if transfers use it to plan from the user's edited squad.
+    solve: Callable[..., Plan] | None = field(default=None, repr=False)
 
 
 def decide(
@@ -317,16 +327,21 @@ def decide(
     if initial:  # a squad from scratch: pick it once and hold it (much faster to solve)
         kw["no_transfer_last"] = len(horizon) - 1
 
-    def plan_with(**more) -> Plan:
+    def solve_for(players, sell_price, bank, free_transfers, **more) -> Plan:
         return solve(
             world,
             xp,
             horizon,
-            squad.players,
-            squad.sell_price,
-            squad.bank,
-            squad.free_transfers,
+            players,
+            sell_price,
+            bank,
+            free_transfers,
             **{**kw, **more},
+        )
+
+    def plan_with(**more) -> Plan:
+        return solve_for(
+            squad.players, squad.sell_price, squad.bank, squad.free_transfers, **more
         )
 
     base = plan_with()
@@ -350,6 +365,7 @@ def decide(
         chip_now,
         dists=dists,
         multiplier=multiplier,
+        solve=solve_for,
     )
     now_chip = plan.chip_now
     if not compare_hold or initial or not plan.buys or now_chip in (WILDCARD, FREE_HIT):

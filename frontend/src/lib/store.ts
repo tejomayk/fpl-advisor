@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Advice } from "./types";
+import type { Advice, ListedPlayer } from "./types";
 import { isNum } from "./format";
 
 export type Status =
@@ -40,8 +40,15 @@ function errorMessage(status: number, body: unknown) {
   return "Something went wrong. Please try again.";
 }
 
-/** Writes the current team, league and view into the address bar (no reload, no history entry). */
-export function writeUrl(p: { team?: number | null; league?: number | null; demo?: boolean; view?: string }) {
+/** Writes the current team, league and view into the address bar (no reload, no history entry).
+    `draft` (a what-if draft link, see lib/drafts.ts) is kept as it is unless given; null drops it. */
+export function writeUrl(p: {
+  team?: number | null;
+  league?: number | null;
+  demo?: boolean;
+  view?: string;
+  draft?: string | null;
+}) {
   const qs = new URLSearchParams();
   if (p.demo) qs.set("demo", "1");
   else {
@@ -49,12 +56,49 @@ export function writeUrl(p: { team?: number | null; league?: number | null; demo
     if (p.team && p.league) qs.set("league", String(p.league));
   }
   if (p.view && p.view !== "week" && (p.demo || p.team)) qs.set("view", p.view);
+  const draft = p.draft === undefined ? new URLSearchParams(location.search).get("draft") : p.draft;
+  if (draft && p.team && !p.demo) qs.set("draft", draft);
   const s = qs.toString();
   try {
     history.replaceState(null, "", `${location.pathname}${s ? `?${s}` : ""}`);
   } catch {
     /* ignore */
   }
+}
+
+/** GET a JSON endpoint: the body, or a plain-words error message. */
+export async function getJson<T>(url: string, timeoutMs = 120000): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
+  const ctrl = new AbortController();
+  const timeout = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body || typeof body !== "object") return { ok: false, message: errorMessage(res.status, body) };
+    return { ok: true, data: body as T };
+  } catch (e) {
+    return {
+      ok: false,
+      message:
+        e instanceof DOMException && e.name === "AbortError"
+          ? "This is taking too long. FPL may be busy. Try again in a minute."
+          : "We couldn't reach the server. Check your connection and try again.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+let playersCache: Promise<ListedPlayer[] | string> | null = null;
+/** Every player (for the transfer editor), fetched once per page load. Failures aren't cached. */
+export function loadPlayers(): Promise<ListedPlayer[] | string> {
+  if (!playersCache) {
+    playersCache = getJson<{ players?: ListedPlayer[] }>("/api/players", 60000).then((r) => {
+      if (r.ok && Array.isArray(r.data.players)) return r.data.players;
+      playersCache = null;
+      return r.ok ? "We couldn't load the player list. Try again in a minute." : r.message;
+    });
+  }
+  return playersCache;
 }
 
 export function useAdvice() {
