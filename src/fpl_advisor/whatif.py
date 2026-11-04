@@ -191,6 +191,8 @@ def _hold_plan(a: Advice) -> Plan:
         return dec.hold
     if not dec.base.buys:
         return dec.base
+    if dec.no_chip_hold is not None:  # often solved already, alongside the advice
+        return dec.no_chip_hold()
     sq = a.squad
     return dec.solve(
         sq.players, sq.sell_price, sq.bank, sq.free_transfers, max_transfers=0

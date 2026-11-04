@@ -1,5 +1,5 @@
 import { AnimatePresence, m } from "motion/react";
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { looksLikeLeagueLink, looksLikeTeamLink, parseIds } from "../lib/ids";
 
 interface Props {
@@ -8,8 +8,12 @@ interface Props {
   initialErrors?: { team?: string; league?: string };
   busy?: boolean;
   onSubmit: (team: number, league: number | null) => void;
+  /** Called once the visitor stops typing on a valid ID, to start the request early. */
+  onPause?: (team: number, league: number | null) => void;
   autoFocus?: boolean;
 }
+
+const PAUSE_MS = 700; // "finished typing": no change in either box for this long
 
 function Field({
   id,
@@ -71,12 +75,20 @@ function Field({
   );
 }
 
-export function Finder({ initialTeam = "", initialLeague = "", initialErrors = {}, busy, onSubmit, autoFocus }: Props) {
+export function Finder({ initialTeam = "", initialLeague = "", initialErrors = {}, busy, onSubmit, onPause, autoFocus }: Props) {
   const uid = useId();
   const [team, setTeam] = useState(initialTeam);
   const [league, setLeague] = useState(initialLeague);
   const [errors, setErrors] = useState(initialErrors);
   const [help, setHelp] = useState(false);
+
+  useEffect(() => {
+    if (!onPause) return;
+    const r = parseIds(team, league);
+    if (!r.team || r.errors.team || r.errors.league) return;
+    const t = window.setTimeout(() => onPause(r.team!, r.league), PAUSE_MS);
+    return () => clearTimeout(t);
+  }, [team, league, onPause]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

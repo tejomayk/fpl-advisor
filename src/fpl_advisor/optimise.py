@@ -53,6 +53,10 @@ MIP_GAP = 0.002  # stop when within 0.2% of the best possible plan
 SOLVER = os.environ.get("FPL_SOLVER", "auto")  # auto: HiGHS when installed, else CBC
 # Seconds the solver may spend per solve. scripts/season_sim.py can change it.
 SOLVER_TIME_LIMIT = 4
+# Plans `advise.decide` may solve at once (the plan, holding, no hit), each on its own CPU. The
+# time limit is wall-clock time, so two solves sharing one CPU could stop at a different plan:
+# never run more than the CPUs this process may use. FPL_SOLVE_WORKERS overrides (1 = one at a time).
+MAX_SOLVE_WORKERS = 3
 # Kept for callers that still read them; the plan uses BENCH_WEIGHTS and DECAY.
 BENCH_WEIGHT = BENCH_WEIGHTS[1]
 HORIZON_WEIGHTS = [DECAY**i for i in range(HORIZON)]
@@ -127,6 +131,30 @@ def _solver(time_limit: float | None):
     if name == "highs":
         return pulp.HiGHS(msg=msg, timeLimit=limit, gapRel=MIP_GAP, threads=1)
     return pulp.PULP_CBC_CMD(msg=msg, timeLimit=limit, gapRel=MIP_GAP)
+
+
+def usable_cpus() -> int:
+    """CPUs this process may run on: its CPU affinity, capped by a container's CPU quota."""
+    try:
+        n = len(os.sched_getaffinity(0))
+    except AttributeError:  # macOS and Windows have no affinity call
+        n = os.cpu_count() or 1
+    try:  # cgroup v2 quota, e.g. "200000 100000" is 2 CPUs; "max 100000" is no limit
+        with open("/sys/fs/cgroup/cpu.max") as f:
+            quota, period = f.read().split()[:2]
+        if quota != "max":
+            n = min(n, max(1, int(quota) // int(period)))
+    except (OSError, ValueError):
+        pass
+    return max(1, n)
+
+
+def solve_workers() -> int:
+    """How many plans to solve at once (see MAX_SOLVE_WORKERS)."""
+    raw = os.environ.get("FPL_SOLVE_WORKERS", "").strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    return min(MAX_SOLVE_WORKERS, usable_cpus())
 
 
 def decay_weights(n: int, decay: float | None = None) -> list[float]:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import CancelledError, ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
@@ -31,6 +33,7 @@ from .optimise import (
     WILDCARD,
     Plan,
     solve,
+    solve_workers,
 )
 from .prices import outlook, timing_advice
 from .signals import Signals
@@ -276,6 +279,9 @@ class Decision:
     # Solve the same plan for another squad: solve(players, sell_price, bank, free_transfers,
     # **solver options). What-if transfers use it to plan from the user's edited squad.
     solve: Callable[..., Plan] | None = field(default=None, repr=False)
+    # The best plan with no move this week and no chip, when asked for (it may already be solved
+    # in the background). What-if transfers compare against it.
+    no_chip_hold: Callable[[], Plan] | None = field(default=None, repr=False)
 
 
 def decide(
@@ -290,6 +296,7 @@ def decide(
     ft_cap: int = R.MAX_FREE_TRANSFERS,
     keep_fts_on_chip: bool = True,
     compare_hold: bool = True,
+    workers: int | None = None,
 ) -> Decision:
     """Projections, transfers, chips, XI and captain for `world.next_event`.
 
@@ -344,82 +351,158 @@ def decide(
             squad.players, squad.sell_price, squad.bank, squad.free_transfers, **more
         )
 
-    base = plan_with()
-    chip_kw = {k: v for k, v in kw.items() if k != "multiplier"}
-    chips = (
-        []
-        if initial
-        else advise_chips(
-            world, xp, window, horizon, squad, base, multiplier, **chip_kw
+    # With more than one CPU, the plans for holding and for no hit are solved alongside the main
+    # plan, before it is known whether they are needed. They assume no chip this week; if the plan
+    # plays Triple Captain or Bench Boost they are solved again with it. With one CPU each plan is
+    # solved only when needed, one at a time, as before.
+    workers = solve_workers() if workers is None else workers
+    with _solver_pool(workers) as pool:
+
+        def later(**more) -> _Pending:
+            return _Pending(pool, lambda: plan_with(**more))
+
+        speculate = compare_hold and not initial
+        first_base = later()
+        spec_hold = later(max_transfers=0) if speculate else None
+        pending_no_hit = (
+            later(max_transfers=squad.free_transfers)
+            if speculate and max_hits > 0
+            else None
         )
-    )
-    chip_now = next((c for c in chips if c.play_now), None)
-    plan = chip_now.plan if chip_now and chip_now.plan is not None else base
-    dec = Decision(
-        window,
-        horizon,
-        xp,
-        base,
-        plan,
-        chips,
-        chip_now,
-        dists=dists,
-        multiplier=multiplier,
-        solve=solve_for,
-    )
-    now_chip = plan.chip_now
-    if not compare_hold or initial or not plan.buys or now_chip in (WILDCARD, FREE_HIT):
+        base = first_base.get()
+
+        def shared_solve(*a, **k) -> Plan:  # chip plans wait for a free solver thread
+            return pool.submit(solve, *a, **k).result()
+
+        chip_kw = {k: v for k, v in kw.items() if k != "multiplier"}
+        chips = (
+            []
+            if initial
+            else advise_chips(
+                world,
+                xp,
+                window,
+                horizon,
+                squad,
+                base,
+                multiplier,
+                solver=shared_solve if pool is not None else None,
+                **chip_kw,
+            )
+        )
+        chip_now = next((c for c in chips if c.play_now), None)
+        plan = chip_now.plan if chip_now and chip_now.plan is not None else base
+        dec = Decision(
+            window,
+            horizon,
+            xp,
+            base,
+            plan,
+            chips,
+            chip_now,
+            dists=dists,
+            multiplier=multiplier,
+            solve=solve_for,
+        )
+        dec.no_chip_hold = spec_hold.get if spec_hold is not None else None
+        now_chip = plan.chip_now
+        if (
+            not compare_hold
+            or initial
+            or not plan.buys
+            or now_chip in (WILDCARD, FREE_HIT)
+        ):
+            return dec
+        if now_chip in (TRIPLE_CAPTAIN, BENCH_BOOST):
+            same_chip = {
+                "triple_captain_gw": horizon[0] if now_chip == TRIPLE_CAPTAIN else None,
+                "bench_boost_gw": horizon[0] if now_chip == BENCH_BOOST else None,
+            }
+            pending_hold = later(max_transfers=0, **same_chip)
+            pending_no_hit = (
+                later(max_transfers=squad.free_transfers, **same_chip)
+                if plan.hits
+                else None
+            )
+        else:
+            pending_hold = spec_hold
+        if plan.hits and pending_no_hit is None:
+            pending_no_hit = later(max_transfers=squad.free_transfers)
+        msd, msd_after = robust.mean_sds(dists, horizon, after)
+
+        def load(p: Plan) -> dict[int, float]:
+            return robust.loadings(p, horizon, msd, msd_after, multiplier, world=world)
+
+        hold = pending_hold.get()
+        dec.hold = hold
+        l_hold, l_plan = load(hold), load(plan)
+        first = plan
+        vs_hold = robust.compare(plan, hold, l_plan, l_hold)
+        notes = []
+        if plan.hits:
+            no_hit = pending_no_hit.get()
+            if no_hit.buys:
+                dec.alternatives["no_hit"] = no_hit
+                l_no_hit = load(no_hit)
+                vs_no_hit = robust.compare(plan, no_hit, l_plan, l_no_hit)
+                dec.p_hit = round(vs_no_hit.p, 3)
+                if vs_no_hit.p < robust.HIT_CONFIDENCE:
+                    notes.append(
+                        f"The best plan took a -{R.HIT_COST * plan.hits} hit, but it beat the best "
+                        f"plan without one in only {vs_no_hit.p:.0%} of tests with the forecasts "
+                        "nudged up and down, so the hit isn't worth the risk."
+                    )
+                    plan, l_plan = no_hit, l_no_hit
+                    vs_hold = robust.compare(plan, hold, l_plan, l_hold)
+        if vs_hold.p < robust.MOVE_CONFIDENCE:
+            notes.append(
+                f"The best moves beat saving the transfer in only {vs_hold.p:.0%} of tests with the "
+                "forecasts nudged up and down, so saving it is the safer choice."
+            )
+            plan = hold
+        if plan is not first:
+            dec.alternatives["planner"] = first
+            dec.robust_note = " ".join(notes)
+        dec.plan = plan
+        if chip_now is not None and chip_now.plan is first:
+            chip_now.plan = plan
+        dec.p_beats_hold = round(vs_hold.p, 3)
+        if plan is hold:
+            dec.confidence = round(1 - vs_hold.p, 3)
+        else:
+            dec.confidence = dec.p_beats_hold
+            dec.value_of_moves = round(plan.objective - hold.objective, 1)
+        dec.move_confidence = move_confidences(plan, horizon, msd, multiplier)
         return dec
-    same_chip = {
-        "triple_captain_gw": horizon[0] if now_chip == TRIPLE_CAPTAIN else None,
-        "bench_boost_gw": horizon[0] if now_chip == BENCH_BOOST else None,
-    }
-    msd, msd_after = robust.mean_sds(dists, horizon, after)
 
-    def load(p: Plan) -> dict[int, float]:
-        return robust.loadings(p, horizon, msd, msd_after, multiplier, world=world)
 
-    hold = plan_with(max_transfers=0, **same_chip)
-    dec.hold = hold
-    l_hold, l_plan = load(hold), load(plan)
-    first = plan
-    vs_hold = robust.compare(plan, hold, l_plan, l_hold)
-    notes = []
-    if plan.hits:
-        no_hit = plan_with(max_transfers=squad.free_transfers, **same_chip)
-        if no_hit.buys:
-            dec.alternatives["no_hit"] = no_hit
-            l_no_hit = load(no_hit)
-            vs_no_hit = robust.compare(plan, no_hit, l_plan, l_no_hit)
-            dec.p_hit = round(vs_no_hit.p, 3)
-            if vs_no_hit.p < robust.HIT_CONFIDENCE:
-                notes.append(
-                    f"The best plan took a -{R.HIT_COST * plan.hits} hit, but it beat the best "
-                    f"plan without one in only {vs_no_hit.p:.0%} of tests with the forecasts "
-                    "nudged up and down, so the hit isn't worth the risk."
-                )
-                plan, l_plan = no_hit, l_no_hit
-                vs_hold = robust.compare(plan, hold, l_plan, l_hold)
-    if vs_hold.p < robust.MOVE_CONFIDENCE:
-        notes.append(
-            f"The best moves beat saving the transfer in only {vs_hold.p:.0%} of tests with the "
-            "forecasts nudged up and down, so saving it is the safer choice."
-        )
-        plan = hold
-    if plan is not first:
-        dec.alternatives["planner"] = first
-        dec.robust_note = " ".join(notes)
-    dec.plan = plan
-    if chip_now is not None and chip_now.plan is first:
-        chip_now.plan = plan
-    dec.p_beats_hold = round(vs_hold.p, 3)
-    if plan is hold:
-        dec.confidence = round(1 - vs_hold.p, 3)
-    else:
-        dec.confidence = dec.p_beats_hold
-        dec.value_of_moves = round(plan.objective - hold.objective, 1)
-    dec.move_confidence = move_confidences(plan, horizon, msd, multiplier)
-    return dec
+@contextmanager
+def _solver_pool(workers: int):
+    """Threads for solving plans side by side; None with one worker. Plans still solving when
+    the block ends finish in the background, and ones not yet started are dropped."""
+    pool = ThreadPoolExecutor(workers, "solve") if workers > 1 else None
+    try:
+        yield pool
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+
+class _Pending:
+    """A plan solving on `pool`, or with no pool, one solved when first asked for."""
+
+    def __init__(self, pool: ThreadPoolExecutor | None, fn: Callable[[], Plan]):
+        self._fn = fn
+        self._future = pool.submit(fn) if pool is not None else None
+        self._plan: Plan | None = None
+
+    def get(self) -> Plan:
+        if self._plan is None:
+            try:
+                self._plan = self._future.result() if self._future else self._fn()
+            except CancelledError:  # dropped unstarted when decide() finished
+                self._plan = self._fn()
+        return self._plan
 
 
 def restate_confidence(dec: Decision, plan: Plan, world: World) -> None:

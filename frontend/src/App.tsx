@@ -5,6 +5,7 @@ import { Finder } from "./components/Finder";
 import { SheetProvider, useCloseSheet, useSheet } from "./components/Sheet";
 import { TabBar, type Item } from "./components/Tabs";
 import { parseIds } from "./lib/ids";
+import { prefetchAdvice } from "./lib/requests";
 import { saved, useAdvice, writeUrl, type Status } from "./lib/store";
 import type { Advice } from "./lib/types";
 import { aboutSheet } from "./sheets/sheets";
@@ -51,6 +52,7 @@ function ChangeTeam({ onLoad, onDemo, demo }: { onLoad: (t: number, l: number | 
           close();
           onLoad(t, l);
         }}
+        onPause={prefetchAdvice}
       />
       {!demo && (
         <button
@@ -132,6 +134,7 @@ function Landing({
             initialLeague={initial.league}
             initialErrors={initial.errors}
             onSubmit={onLoad}
+            onPause={prefetchAdvice}
           />
           <m.button
             type="button"
@@ -366,7 +369,11 @@ function AppInner() {
         return;
       }
       setInitial({ team: r.team ? String(r.team) : qTeam, league: r.league ? String(r.league) : qLeague || "", errors: r.errors });
+      return;
     }
+    // A returning visitor: start their advice now, so it's ready (or nearly) when they press the button.
+    const back = parseIds(saved.get("team"), saved.get("league"));
+    if (back.team && !back.errors.league) prefetchAdvice(back.team, back.league);
   }, [params, load, loadDemo]);
 
   const isDemo = status.kind !== "idle" && status.demo;

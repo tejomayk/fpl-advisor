@@ -15,6 +15,7 @@ One chip per gameweek. Since 2025/26 there are two of each chip, one per half of
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import optimise
@@ -116,9 +117,14 @@ def advise_chips(
     squad: Squad,
     base: Plan,
     multiplier: dict[int, float] | None = None,
+    solver: Callable[..., Plan] | None = None,
     **solve_kw,
 ) -> list[ChipAdvice]:
-    """One verdict per chip held now. A chip played now carries the plan to field (`plan`)."""
+    """One verdict per chip held now. A chip played now carries the plan to field (`plan`).
+
+    `solver` stands in for `optimise.solve` (advise.decide passes one that shares its solver
+    threads).
+    """
     g0 = window[0]
     weeks = [g for g in horizon if g in base.xi]
 
@@ -126,7 +132,7 @@ def advise_chips(
         return world.players[pid].name
 
     def resolve(**chip_kw) -> Plan:
-        return solve(
+        return (solver or solve)(
             world,
             xp,
             horizon,
