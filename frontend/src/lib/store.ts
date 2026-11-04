@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Advice, ListedPlayer } from "./types";
 import { isNum } from "./format";
+import { requestAdvice, sendJson, type Reply } from "./requests";
 
 export type Status =
   | { kind: "idle" }
@@ -66,26 +67,24 @@ export function writeUrl(p: {
   }
 }
 
-/** GET a JSON endpoint: the body, or a plain-words error message. */
-export async function getJson<T>(url: string, timeoutMs = 120000): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
-  const ctrl = new AbortController();
-  const timeout = window.setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
-    const body = await res.json().catch(() => null);
-    if (!res.ok || !body || typeof body !== "object") return { ok: false, message: errorMessage(res.status, body) };
-    return { ok: true, data: body as T };
-  } catch (e) {
+/** A reply's JSON body, or a plain-words error message. */
+function readReply<T>(r: Reply): { ok: true; data: T } | { ok: false; message: string } {
+  if ("failed" in r)
     return {
       ok: false,
       message:
-        e instanceof DOMException && e.name === "AbortError"
+        r.failed === "timeout"
           ? "This is taking too long. FPL may be busy. Try again in a minute."
           : "We couldn't reach the server. Check your connection and try again.",
     };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const ok = r.status >= 200 && r.status < 300;
+  if (!ok || !r.body || typeof r.body !== "object") return { ok: false, message: errorMessage(r.status, r.body) };
+  return { ok: true, data: r.body as T };
+}
+
+/** GET a JSON endpoint: the body, or a plain-words error message. */
+export async function getJson<T>(url: string, timeoutMs = 120000) {
+  return readReply<T>(await sendJson(url, timeoutMs));
 }
 
 let playersCache: Promise<ListedPlayer[] | string> | null = null;
@@ -123,40 +122,15 @@ export function useAdvice() {
     const base = { kind: "loading", demo: false, team, league, slow: 0 } as const;
     setStatus(base);
     slowTimers(n, base);
-    const qs = new URLSearchParams({ team: String(team) });
-    if (league) qs.set("league", String(league));
-    const ctrl = new AbortController();
-    const timeout = window.setTimeout(() => ctrl.abort(), 120000);
-    let res: Response;
-    let body: unknown = null;
-    try {
-      res = await fetch(`/api/advice?${qs}`, { signal: ctrl.signal, headers: { Accept: "application/json" } });
-      body = await res.json().catch(() => null);
-    } catch (e) {
-      if (n !== seq.current) return;
-      clear();
-      setStatus({
-        kind: "error",
-        team,
-        league,
-        demo: false,
-        message:
-          e instanceof DOMException && e.name === "AbortError"
-            ? "This is taking too long. FPL may be busy. Try again in a minute."
-            : "We couldn't reach the server. Check your connection and try again.",
-      });
-      return;
-    } finally {
-      clearTimeout(timeout);
-    }
+    const r = readReply<Advice>(await requestAdvice(team, league)); // the early request, if any
     if (n !== seq.current) return;
     clear();
-    if (!res.ok || !body || typeof body !== "object") {
-      setStatus({ kind: "error", team, league, demo: false, message: errorMessage(res.status, body) });
+    if (!r.ok) {
+      setStatus({ kind: "error", team, league, demo: false, message: r.message });
       return;
     }
     saved.set(team, league);
-    setStatus({ kind: "ready", data: body as Advice, demo: false, team, league });
+    setStatus({ kind: "ready", data: r.data, demo: false, team, league });
   }, []);
 
   const loadDemo = useCallback(async () => {
