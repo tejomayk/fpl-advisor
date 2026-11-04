@@ -40,6 +40,7 @@ from .api import FPLClient, FPLError, prune_cache
 from .config import Config
 from .keys import load_dotenv, redact
 from .net import client_ip
+from .optimise import solve_workers, usable_cpus
 from .serialize import advice_to_dict, whatif_to_dict
 from .signals import Signals
 from .signals_service import SignalsHub
@@ -376,6 +377,9 @@ def create_app(
             "ok": True,
             "world_loaded": worlds.loaded,
             "mode": "serverless" if serverless else "server",
+            # CPUs this instance may use, and so how many plans it solves at once (issue #1).
+            "cpus": usable_cpus(),
+            "parallel_solves": solve_workers(),
         }
 
     def advice_key(team: int, league: int | None, risk: str) -> tuple[World, tuple]:

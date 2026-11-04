@@ -18,7 +18,7 @@ from fakehttp import FakeHTTP
 from fastapi.testclient import TestClient
 from test_no_leaks import FakeFPL
 
-from fpl_advisor import jobs, store, web
+from fpl_advisor import jobs, optimise, store, web
 from fpl_advisor.signals import PlayerSignal, Signals
 from fpl_advisor.world import World
 
@@ -96,6 +96,8 @@ def test_advice_comes_from_the_stored_snapshot_with_no_paid_calls(paid_wire):
         "ok": True,
         "world_loaded": True,
         "mode": "serverless",
+        "cpus": optimise.usable_cpus(),
+        "parallel_solves": optimise.solve_workers(),
     }
 
 
